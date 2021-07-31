@@ -2,7 +2,6 @@ import pyodbc
 import sys
 import pandas as pd
 
-
 def Connect(server, database, UID, PWD):
     connection_string = f'Driver={{SQL Server}};Server={server};Database={database};User Id={UID};Password={PWD}'
     #print(connection_string)
