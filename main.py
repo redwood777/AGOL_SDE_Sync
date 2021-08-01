@@ -1,5 +1,6 @@
 import json
 import sql_functions as sql
+import json_function as jsn
 
 def ResolveConflicts(SDE_deltas, AGOL_deltas):
     #Finds all conflicting edits. Resolves conflicts by user input. Returns revised SDE_deltas and AGOL_deltas
