@@ -1,6 +1,9 @@
 import pyodbc
 import sys
 import pandas as pd
+import json
+from shapely import wkt
+import shapely
 
 def Connect(server, database, UID, PWD):
     connection_string = f'Driver={{SQL Server}};Server={server};Database={database};User Id={UID};Password={PWD}'
@@ -71,6 +74,36 @@ def GetAdds(connection, registration_id, lastState):
 
     return adds
 
+def GeomTextToDict(text):
+    #text = 'POLYGON ((400616.856061806 4640220.1292989273, 400528.97544409893 4640210.1569971107, 400502.5315446835 4640217.2087017745, 400507.11514948215 4640206.6311493963, 400598.9128298806 4640158.8985449821, 400616.856061806 4640220.1292989273))'
+    geom = wkt.loads(text)
+    #geomType = text.split('(')[0].strip().lower()
+
+    dict_out = {geom.geom_type: shapely.geometry.mapping(geom)['coordinates']}
+    #print(json.dumps(dict_out))
+
+    return dict_out
+    #print(geom.geom_type)
+    #dict_out = None
+    
+def DataframeToDict(df):
+    #takes adds/updates dataframe and converts into agol-json-like dictionary
+    dict_out = []
+    for i in df.index:
+        attributes = json.loads(df.iloc[i-1].drop(columns='SHAPE').to_json(orient='index'))
+        #print(attributes)
+        geometry = GeomTextToDict(df['SHAPE'][i])
+        entry = {'geometry': geometry, 'attributes': attributes}
+        dict_out.append(entry)
+
+    print(json.dumps(dict_out, indent=4))
+
+    return dict_out
+
+    
+        
+        
+
 def ExtractChanges(connection, registration_id, fcName, lastState):
     #returns object lists for adds and updates, and list of objects deleted
 
@@ -112,9 +145,14 @@ def ExtractChanges(connection, registration_id, fcName, lastState):
     #get global ids for deletes
     deleteGUIDs = SdeObjectIdsToGlobalIds(connection, deletes["SDE_DELETES_ROW_ID"].tolist(), fcName, registration_id)
 
-    print("ADDS:", adds, "\nUPDATES:",updates,"\nDELETES:",deleteGUIDs)
-
+    #print("ADDS:", adds, "\nUPDATES:",updates,"\nDELETES:",deleteGUIDs)
     
+    DataframeToDict(adds)
+    
+
+    #adds_out = []
+    #parsed = json.loads(result)
+    #print(json.dumps(parsed, indent=4))
         
         
         
@@ -123,6 +161,7 @@ def ExtractChanges(connection, registration_id, fcName, lastState):
 def ApplyEdits(connection, fcName, registration_id, deltas):
     #applies deltas to versioned view. Returns success codes and new SDE_STATE_ID
     return None
-    
+
+#GeomTextToDict('')
 
 
