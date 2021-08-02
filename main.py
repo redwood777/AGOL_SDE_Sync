@@ -1,6 +1,6 @@
 import json
 import sql_functions as sql
-import json_function as jsn
+#import json_functions as jsn
 
 def ResolveConflicts(SDE_deltas, AGOL_deltas):
     #Finds all conflicting edits. Resolves conflicts by user input. Returns revised SDE_deltas and AGOL_deltas
@@ -43,7 +43,7 @@ def test():
 
     registration_id = sql.GetRegistrationId(connection, 'AGOL_TEST_PY_2')
 
-    sql.GetAdds(connection, registration_id, 0)
+    sql.ExtractChanges(connection, registration_id, 'AGOL_TEST_PY_2', 0)
     #ids = GetSdeStateIdsSinceId(connection, 'AGOL_TEST_PY_2', 'DEFAULT', 0)
     
     #deletes = sql.GetDeletes(connection, registration_id, 0)
