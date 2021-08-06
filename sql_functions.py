@@ -4,6 +4,7 @@ import pandas as pd
 import json
 from shapely import wkt
 import shapely
+import geojson
 
 def Connect(server, database, UID, PWD):
     connection_string = f'Driver={{SQL Server}};Server={server};Database={database};User Id={UID};Password={PWD}'
@@ -79,29 +80,49 @@ def GeomTextToDict(text):
     geom = wkt.loads(text)
     #geomType = text.split('(')[0].strip().lower()
 
-    dict_out = {geom.geom_type: shapely.geometry.mapping(geom)['coordinates']}
+    #dict_out = {geom.geom_type: shapely.geometry.mapping(geom)['coordinates']}
     #print(json.dumps(dict_out))
+    dict_out = geojson.Feature(geometry=geom, properties={})
+    #dict_out = json.loads()
+    print(json.dumps(dict_out, indent=4))
 
-    return dict_out
+    #return dict_out
     #print(geom.geom_type)
     #dict_out = None
     
 def DataframeToDict(df):
     #takes adds/updates dataframe and converts into agol-json-like dictionary
     dict_out = []
+
+    #separate shape column from dataframe
+    shapes = df['SHAPE']
+    df = df.drop(columns='SHAPE')
+
+    
     for i in df.index:
-        attributes = json.loads(df.iloc[i-1].drop(columns='SHAPE').to_json(orient='index'))
+        #geometry = GeomTextToDict(shapes[i])
+        geometry = {"wkt": shapes[i]}
+        attributes = df.iloc[i-1]
+        attributes = json.loads(attributes.to_json(orient='index'))
         #print(attributes)
-        geometry = GeomTextToDict(df['SHAPE'][i])
         entry = {'geometry': geometry, 'attributes': attributes}
         dict_out.append(entry)
 
-    print(json.dumps(dict_out, indent=4))
+    
 
     return dict_out
 
     
-        
+def DeltasToJson(adds, updates, deleteGUIDs):
+    adds_json = DataframeToDict(adds)
+    updates_json = DataframeToDict(updates)
+
+    deleteGUIDs = ['{{{0}}}'.format(delete) for delete in deleteGUIDs]
+
+    dict_out = {"adds": adds_json, "updates": updates_json, "deletes": deleteGUIDs}
+    print(json.dumps(dict_out, indent=4))
+
+    return dict_out
         
 
 def ExtractChanges(connection, registration_id, fcName, lastState):
@@ -146,8 +167,8 @@ def ExtractChanges(connection, registration_id, fcName, lastState):
     deleteGUIDs = SdeObjectIdsToGlobalIds(connection, deletes["SDE_DELETES_ROW_ID"].tolist(), fcName, registration_id)
 
     #print("ADDS:", adds, "\nUPDATES:",updates,"\nDELETES:",deleteGUIDs)
+    DeltasToJson(adds, updates, deleteGUIDs)
     
-    DataframeToDict(adds)
     
 
     #adds_out = []
@@ -163,5 +184,27 @@ def ApplyEdits(connection, fcName, registration_id, deltas):
     return None
 
 #GeomTextToDict('')
+
+def test():
+    connection = Connect('inpredwgis2', 'REDWTest', 'REDW_Python', 'Benefit4u!123')
+    
+    #cursor = connection.cursor()
+    #query = "UPDATE AGOL_TEST_PY_2_evw SET Taxonomy = 'Obla dee' WHERE OBJECTID = 484
+    # execute the query and read to a dataframe in Python
+    #data = pd.read_sql(query, connection)
+    #print(data)
+
+    registration_id = GetRegistrationId(connection, 'AGOL_TEST_PY_2')
+
+    ExtractChanges(connection, registration_id, 'AGOL_TEST_PY_2', 0)
+    #ids = GetSdeStateIdsSinceId(connection, 'AGOL_TEST_PY_2', 'DEFAULT', 0)
+    
+    #deletes = sql.GetDeletes(connection, registration_id, 0)
+    #sql.SdeObjectIdsToGlobalIds(connection, deletes, 'AGOL_TEST_PY_2', registration_id)
+    
+    connection.close()
+
+if __name__ == '__main__':
+    test()
 
 
