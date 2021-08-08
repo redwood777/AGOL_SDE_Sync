@@ -2,6 +2,10 @@ import json
 #import pandas as pd
 import requests
 #hello leo
+
+#INTSTALL THIS: https://www.python.org/downloads/release/python-2718/
+#use pip to install requests
+
 #https://developers.arcgis.com/rest/
 #https://developers.arcgis.com/rest/services-reference/enterprise/extract-changes-feature-service-.htm
 #https://developers.arcgis.com/rest/services-reference/enterprise/apply-edits-feature-service-.htm
