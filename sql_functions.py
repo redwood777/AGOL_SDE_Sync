@@ -172,7 +172,7 @@ def Add(connection, fcName, dict_in):
     print(query)
     #result = pd.read_sql(connection, query)
 
-def Update(
+#def Update(
     
 
 def ExtractChanges(connection, registration_id, fcName, lastState):
