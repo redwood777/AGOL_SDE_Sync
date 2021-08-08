@@ -41,8 +41,31 @@ def ResolveConflicts(SDE_deltas, AGOL_deltas):
     print("SDE_updated_AGOL_deleted:", SDE_updated_AGOL_deleted)
     print("both_updated:", both_updated)
 
-    for ID in AGOL_updated_SDE_deleted:
-        print()
+    #calculate sum of conflicts
+
+    #display sum of conflicts
+
+    #prompt user to resolve all one way, resolve manually, show more info, or cancel
+
+    #if all in favor of AGOL:
+        #move AGOL_updated_SDE_deleted from AGOL_updates to AGOL_adds
+        #remove AGOL_updated_SDE_deleted from SDE_deletes
+
+        #remove SDE_updated_AGOL_deleted from SDE_updates
+
+    #same for all in favor of SDE:
+
+    #if manual: 
+        #run through all conflict lists, print out conflict, prompt to resolve in favor of AGOL or SDE
+
+        #for update/delete conflicts:
+            #if in favor of update: update -> add, delete removed
+            #if in favor of delete: update removed
+
+        #for update/update conflicts:
+            #losing update removed
+        for ID in AGOL_updated_SDE_deleted:
+        
     
        
     return SDE_deltas, AGOL_deltas
@@ -189,8 +212,8 @@ def test():
     deltas2 = copy.deepcopy(deltas)
     deltas2['deleteIds'].append("CECC5D06-CFD4-40E7-943B-3793770411E1")
 
-    #ResolveConflicts(deltas, deltas2)
-    print(Options('select', ['a', 'b', 'c']))
+    ResolveConflicts(deltas, deltas2)
+    #print(Options('select', ['a', 'b', 'c']))
  
     #connection = sql.Connect('inpredwgis2', 'REDWTest', 'REDW_Python', 'Benefit4u!123')
     

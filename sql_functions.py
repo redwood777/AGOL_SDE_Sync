@@ -55,9 +55,7 @@ def SdeObjectIdsToGlobalIds(connection, objectIds, fcName, registration_id):
     data = pd.read_sql(query, connection)
     second_list = data["GLOBALID"].tolist()
     
-    return first_list + list(set(second_list) - set(first_list))
-
-    
+    return first_list + list(set(second_list) - set(first_list)) 
 
 def GetAdds(connection, registration_id, lastState):
     #returns list of objects in adds table since lastState
@@ -75,6 +73,14 @@ def GetAdds(connection, registration_id, lastState):
     adds['SHAPE'] = shape.values
 
     return adds
+
+def WkbToJson(WKB):
+    geom = arcpy.FromWKB(WKB)
+    return geom.JSON
+
+def JsonToWkb(jsn)
+    geom = arcpy.AsShape(jsn, True)
+    return geom.WKB
 
 def WktToGeoJson(text):
     #text = 'POLYGON ((400616.856061806 4640220.1292989273, 400528.97544409893 4640210.1569971107, 400502.5315446835 4640217.2087017745, 400507.11514948215 4640206.6311493963, 400598.9128298806 4640158.8985449821, 400616.856061806 4640220.1292989273))'
@@ -224,8 +230,6 @@ def ExtractChanges(connection, registration_id, fcName, lastState):
     #adds_out = []
     #parsed = json.loads(result)
     #print(json.dumps(parsed, indent=4))
-        
-    return None
 
 def ApplyEdits(connection, registration_id, fcName, json_dict):
     #applies deltas to versioned view. Returns success codes and new SDE_STATE_ID
