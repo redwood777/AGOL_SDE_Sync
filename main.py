@@ -8,12 +8,12 @@ def GetGlobalIds(dict_in):
     return {add['attributes']['GlobalID'] for add in dict_in}
 
 def Options(prompt, menu):
-    i = 0
+    i = 1
     print(prompt)
     for item in menu:
-        print(i, "--", item)
+        print('  {}. {}'.format(i, item))
         i+=1
-    return input()
+    return input('Enter selection:')
 
 def ResolveConflicts(SDE_deltas, AGOL_deltas):
     #Finds all conflicting edits. Resolves conflicts by user input. Returns revised SDE_deltas and AGOL_deltas
@@ -37,15 +37,20 @@ def ResolveConflicts(SDE_deltas, AGOL_deltas):
     #find update/update conflictions
     both_updated = AGOL_updated.intersection(SDE_updated)
 
-    print("AGOL_updated_SDE_deleted:", AGOL_updated_SDE_deleted)
-    print("SDE_updated_AGOL_deleted:", SDE_updated_AGOL_deleted)
-    print("both_updated:", both_updated)
+    #print("AGOL_updated_SDE_deleted:", AGOL_updated_SDE_deleted)
+    #print("SDE_updated_AGOL_deleted:", SDE_updated_AGOL_deleted)
+    #print("both_updated:", both_updated)
 
     #calculate sum of conflicts
+    total_conflicts = len(AGOL_updated_SDE_deleted) + len(SDE_updated_AGOL_deleted) + len(both_updated)
 
     #display sum of conflicts
-
     #prompt user to resolve all one way, resolve manually, show more info, or cancel
+    prompt = '{} conflicts found. Choose conflict resolution:'.format(total_conflicts)
+    menu = ['Prioritize AGOL Changes', 'Prioritize SDE Changes', 'Choose for each conflict', 'More info', 'Cancel']
+    choice = Options(prompt, menu)
+
+    print(choice)
 
     #if all in favor of AGOL:
         #move AGOL_updated_SDE_deleted from AGOL_updates to AGOL_adds
@@ -64,7 +69,7 @@ def ResolveConflicts(SDE_deltas, AGOL_deltas):
 
         #for update/update conflicts:
             #losing update removed
-        for ID in AGOL_updated_SDE_deleted:
+        #for ID in AGOL_updated_SDE_deleted:
         
     
        
