@@ -2,10 +2,10 @@ import pyodbc
 import sys
 import pandas as pd
 import json
-#import arcpy
-from shapely import wkt
-from shapely.geometry import shape
-import geojson
+import arcpy
+#import shapely
+#from shapely.geometry import shape
+#import geojson
 
 def Connect(server, database, UID, PWD):
     connection_string = 'Driver={{SQL Server}};Server={};Database={};User Id={};Password={}'.format(server, database, UID, PWD)
@@ -64,23 +64,28 @@ def GetAdds(connection, registration_id, lastState):
     query = "SELECT * FROM a{} WHERE SDE_STATE_ID > {}".format(registration_id, lastState)
     adds = pd.read_sql(query, connection)
 
-    #reaquire SHAPE column as Text
-    query = "SELECT SHAPE.STAsText() FROM a{} WHERE SDE_STATE_ID > {}".format(registration_id, lastState)
+    #reaquire SHAPE column as WKB
+    query = "SELECT SHAPE.STAsBinary() FROM a{} WHERE SDE_STATE_ID > {}".format(registration_id, lastState)
     shape = pd.read_sql(query, connection)
     #print(shape['SHAPE'])
 
     #replace shape column with text
     adds['SHAPE'] = shape.values
-
+    print(adds['Visit_Year'])
     return adds
 
 def WkbToJson(WKB):
     geom = arcpy.FromWKB(WKB)
-    return geom.JSON
+    return json.loads(geom.JSON)
 
-def JsonToWkb(jsn)
+def JsonToWkb(jsn):
+    jsn = json.dumps(jsn)
     geom = arcpy.AsShape(jsn, True)
-    return geom.WKB
+    #p = shapely.wkt.loads(wkt_text)
+    #from shapely import wkb
+    #return (wkb.dumps(p, hex=true))
+    #print(geom.WKB)
+    return geom.WKT
 
 def WktToGeoJson(text):
     #text = 'POLYGON ((400616.856061806 4640220.1292989273, 400528.97544409893 4640210.1569971107, 400502.5315446835 4640217.2087017745, 400507.11514948215 4640206.6311493963, 400598.9128298806 4640158.8985449821, 400616.856061806 4640220.1292989273))'
@@ -103,8 +108,8 @@ def GeoJsonToWkt(dict_in):
     # Now it's very easy to get a WKT/WKB representation
     return geom.wkt
     
-def DataframeToDict(df):
-    #takes adds/updates dataframe and converts into agol-json-like dictionary
+def SqlToJson(df):
+    #takes adds or updates dataframe and converts into agol-json-like dictionary
     dict_out = []
 
     #separate shape column from dataframe
@@ -113,7 +118,7 @@ def DataframeToDict(df):
 
     
     for i in df.index:
-        geometry = WktToGeoJson(shapes[i])
+        geometry = WkbToJson(shapes[i])
         #geometry = {"wkt": shapes[i]}
         attributes = df.iloc[i-1]
         attributes = json.loads(attributes.to_json(orient='index'))
@@ -124,12 +129,17 @@ def DataframeToDict(df):
     return dict_out
 
 def JsonToSql(deltas):
+    #takes adds or updates json and turns it into sql-writable format
     dict_out = []
     
     for delta in deltas:
-        SHAPE = WktToSql(GeoJsonToWkt(delta['geometry']))
+        #turn geometry json into syntax for SQL
+        SHAPE = JsonToWkb(delta['geometry'])
+
+        #extract attributes
         attributes = delta['attributes']
 
+        #combine attributes and shape into one dict
         attributes.update({'SHAPE': SHAPE})
 
         dict_out.append(attributes)
@@ -138,13 +148,13 @@ def JsonToSql(deltas):
  
 def DeltasToJson(adds, updates, deleteGUIDs):
     #turns adds, updates and deletes in SQL form to JSON form
-    adds_json = DataframeToDict(adds)
-    updates_json = DataframeToDict(updates)
+    adds_json = SqlToJson(adds)
+    updates_json = SqlToJson(updates)
 
     deleteGUIDs = ['{{{0}}}'.format(delete) for delete in deleteGUIDs]
 
-    dict_out = {"adds": adds_json, "updates": updates_json, "deletes": deleteGUIDs}
-    #print(json.dumps(dict_out, indent=4))
+    dict_out = {"adds": adds_json, "updates": updates_json, "deleteIds": deleteGUIDs}
+    print(json.dumps(dict_out, indent=4))
 
     return dict_out
 
@@ -153,32 +163,54 @@ def JsonToDeltas(json_dict):
     adds_json = json_dict["adds"]
     updates_json = json_dict["updates"]
     
-    deleteGUIDs = [delete.replace('{', '').replace('}', '') for delete in json_dict["deletes"]]
+    deleteGUIDs = [delete.replace('{', '').replace('}', '') for delete in json_dict["deleteIds"]]
 
     adds = JsonToSql(adds_json)
     updates = JsonToSql(updates_json)
 
     return adds, updates, deleteGUIDs
 
-def WktToSql(text):
+def WkbToSql(text):
     SRID = '26910'
-    return 'STGeomFromText({}, {})'.format(text, SRID)
+    return 'STGeomFromText({})'.format(text)
 
-def DictToKeyValues(dict_in):
+def RemoveNulls(dict_in):
     dict_in = {k: v for k, v in dict_in.items() if v is not None}
-    keys = ','.join(dict_in.keys())
-    values = ','.join(dict_in.values())
 
-    return keys, values
+    return dict_in
 
 def Add(connection, fcName, dict_in):
-    keys, values = DictToKeyValues(dict_in)
+    #add a feature to the versioned view of a featureclass
+    dict_in = RemoveNulls(dict_in)
+
+    shape = dict_in['SHAPE']
+    del dict_in['SHAPE']
+
+    keys = ','.join(dict_in.keys())
+    values = ','.join(["'{}'".format(v) for v in dict_in.values()])
+
     
-    query = 'INSERT INTO table_name {}_evw ({}) VALUES ({});'.format(fcName, keys, values)
+    
+    query = "INSERT INTO table_name {}_evw ({}, SHAPE) VALUES ({}, STGeomFromText('{}'));".format(fcName, keys, values, shape)
     print(query)
     #result = pd.read_sql(connection, query)
 
-#def Update(
+def Update(connection, fcName, dict_in):
+    #update a feature in the versioned view of a featureclass
+
+    dict_in = RemoveNulls(dict_in)
+
+    shape = dict_in['SHAPE']
+    del dict_in['SHAPE']
+
+    globalId = dict_in['GlobalID']
+    del dict_in['GlobalID']
+
+    data = ','.join(["{}='{}'".format(k,v) for k,v in dict_in.items()])
+
+    query = "UPDATE {}_evw SET {}, SHAPE=STGeomFromText('{}') WHERE GLOBALID = '{}';".format(fcName, data, shape, globalId)
+
+    print(query)
     
 
 def ExtractChanges(connection, registration_id, fcName, lastState):
@@ -238,6 +270,9 @@ def ApplyEdits(connection, registration_id, fcName, json_dict):
 
     for add in adds:
         Add(connection, fcName, add)
+
+    for update in updates:
+        Update(connection, fcName, update)
     
     return None
 
