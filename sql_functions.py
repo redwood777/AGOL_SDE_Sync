@@ -27,21 +27,20 @@ def GetRegistrationId(connection, fcName):
         print("'{}' not found in SDE_table_registry. Check that it has been registered as versioned.".format(fcName))
         return None
 
-def GetSdeStateIdsSinceId(connection, fcName, version, lastState):
-    #Returns a list of SDE_STATE_IDs greater than lastState.
-    cursor = connection.cursor()
-    query = "EXEC set_current_version '{}'".format(version)
-    cursor.execute(query)
-    print(cursor.messages)
-    query = "SELECT SDE_STATE_ID FROM {}_evw WHERE SDE_STATE_ID = {}".format(fcName, lastState)
-    data = pd.read_sql(query, connection)
-    return data["SDE_STATE_ID"].tolist()
+##def GetSdeStateIdsSinceId(connection, fcName, version, lastState):
+##    #Returns a list of SDE_STATE_IDs greater than lastState.
+##    cursor = connection.cursor()
+##    query = "EXEC set_current_version '{}'".format(version)
+##    cursor.execute(query)
+##    print(cursor.messages)
+##    query = "SELECT SDE_STATE_ID FROM {}_evw WHERE SDE_STATE_ID = {}".format(fcName, lastState)
+##    data = pd.read_sql(query, connection)
+##    return data["SDE_STATE_ID"].tolist()
 
-def GetDeletes(connection, registration_id, lastState):
-    #returns list of objects deleted from versioned table registered with registration id since lastState
-    query = "SELECT SDE_DELETES_ROW_ID, DELETED_AT FROM D{} WHERE DELETED_AT > {}".format(registration_id, lastState)
-    data = pd.read_sql(query, connection)
-    return data #["SDE_DELETES_ROW_ID"].tolist()
+def RemoveNulls(dict_in):
+    dict_in = {k: v for k, v in dict_in.items() if v is not None}
+
+    return dict_in
 
 def SdeObjectIdsToGlobalIds(connection, objectIds, fcName, registration_id):
     #returns UNORDERED list of global ids corresponding to objectIds, IN NO PARTICULAR ORDER
@@ -74,6 +73,12 @@ def GetAdds(connection, registration_id, lastState):
     print(adds['Visit_Year'])
     return adds
 
+def GetDeletes(connection, registration_id, lastState):
+    #returns list of objects deleted from versioned table registered with registration id since lastState
+    query = "SELECT SDE_DELETES_ROW_ID, DELETED_AT FROM D{} WHERE DELETED_AT > {}".format(registration_id, lastState)
+    data = pd.read_sql(query, connection)
+    return data #["SDE_DELETES_ROW_ID"].tolist()
+
 def WkbToJson(WKB):
     geom = arcpy.FromWKB(WKB)
     return json.loads(geom.JSON)
@@ -87,26 +92,26 @@ def JsonToWkb(jsn):
     #print(geom.WKB)
     return geom.WKT
 
-def WktToGeoJson(text):
-    #text = 'POLYGON ((400616.856061806 4640220.1292989273, 400528.97544409893 4640210.1569971107, 400502.5315446835 4640217.2087017745, 400507.11514948215 4640206.6311493963, 400598.9128298806 4640158.8985449821, 400616.856061806 4640220.1292989273))'
-    geom = wkt.loads(text)
-    #geomType = text.split('(')[0].strip().lower()
-
-    #dict_out = {geom.geom_type: shapely.geometry.mapping(geom)['coordinates']}
-    #print(json.dumps(dict_out))
-    dict_out = geojson.Feature(geometry=geom, properties={})
-    #dict_out = json.loads()
-    #print(json.dumps(dict_out, indent=4))
-
-    return dict_out['geometry']
-    #print(geom.geom_type)
-    #dict_out = None
-
-def GeoJsonToWkt(dict_in):
-    geom = shape(dict_in)
-
-    # Now it's very easy to get a WKT/WKB representation
-    return geom.wkt
+##def WktToGeoJson(text):
+##    #text = 'POLYGON ((400616.856061806 4640220.1292989273, 400528.97544409893 4640210.1569971107, 400502.5315446835 4640217.2087017745, 400507.11514948215 4640206.6311493963, 400598.9128298806 4640158.8985449821, 400616.856061806 4640220.1292989273))'
+##    geom = wkt.loads(text)
+##    #geomType = text.split('(')[0].strip().lower()
+##
+##    #dict_out = {geom.geom_type: shapely.geometry.mapping(geom)['coordinates']}
+##    #print(json.dumps(dict_out))
+##    dict_out = geojson.Feature(geometry=geom, properties={})
+##    #dict_out = json.loads()
+##    #print(json.dumps(dict_out, indent=4))
+##
+##    return dict_out['geometry']
+##    #print(geom.geom_type)
+##    #dict_out = None
+##
+##def GeoJsonToWkt(dict_in):
+##    geom = shape(dict_in)
+##
+##    # Now it's very easy to get a WKT/WKB representation
+##    return geom.wkt
     
 def SqlToJson(df):
     #takes adds or updates dataframe and converts into agol-json-like dictionary
@@ -126,7 +131,7 @@ def SqlToJson(df):
         entry = {'geometry': geometry, 'attributes': attributes}
         dict_out.append(entry)
 
-    return dict_out
+    return RemoveNulls(dict_out)
 
 def JsonToSql(deltas):
     #takes adds or updates json and turns it into sql-writable format
@@ -170,14 +175,9 @@ def JsonToDeltas(json_dict):
 
     return adds, updates, deleteGUIDs
 
-def WkbToSql(text):
-    SRID = '26910'
-    return 'STGeomFromText({})'.format(text)
-
-def RemoveNulls(dict_in):
-    dict_in = {k: v for k, v in dict_in.items() if v is not None}
-
-    return dict_in
+##def WkbToSql(text):
+##    SRID = '26910'
+##    return 'STGeomFromText({})'.format(text)
 
 def Add(connection, fcName, dict_in):
     #add a feature to the versioned view of a featureclass
@@ -188,8 +188,6 @@ def Add(connection, fcName, dict_in):
 
     keys = ','.join(dict_in.keys())
     values = ','.join(["'{}'".format(v) for v in dict_in.values()])
-
-    
     
     query = "INSERT INTO table_name {}_evw ({}, SHAPE) VALUES ({}, STGeomFromText('{}'));".format(fcName, keys, values, shape)
     print(query)
@@ -211,29 +209,35 @@ def Update(connection, fcName, dict_in):
     query = "UPDATE {}_evw SET {}, SHAPE=STGeomFromText('{}') WHERE GLOBALID = '{}';".format(fcName, data, shape, globalId)
 
     print(query)
+
+def Delete(connection, fcName, GUID):
+    #remove feature from versioned view of featureclass
+    
+    query = "DELETE FROM  {}_evw WHERE GLOBALID = '{}'".format(GUID)
+    print(query)
+    
     
 
 def ExtractChanges(connection, registration_id, fcName, lastState):
     #returns object lists for adds and updates, and list of objects deleted
 
     #get adds and deletes from delta tables
-    print("getting adds")
+    print("Getting adds")
     adds = GetAdds(connection, registration_id, lastState)
-    print("getting deletes")
+    print("Getting deletes")
     deletes = GetDeletes(connection, registration_id, lastState)
 
     #find updates from adds and deletes:
-    #print(adds.index)
-    #updates = adds.loc(adds["OBJECTID"] in (deletes["SDE_DELETES_ROW_ID"].tolist()))
-    #print(updates)
-
+    
+    print("Processing updates")
+    
     #find updates, remove them from adds and deletes table, and add them to updates table
     #in SQL, updates are stored as an add and a delete occuring at the same SDE_STATE
-    print("processing updates")
+    
     #create lists to store rows containing updates in adds and deletes table
     updateAddRows = []
     updateDeleteRows = []
-
+    
     #find update rows
     for i in adds.index:
         for j in deletes.index:
@@ -255,9 +259,9 @@ def ExtractChanges(connection, registration_id, fcName, lastState):
     deleteGUIDs = SdeObjectIdsToGlobalIds(connection, deletes["SDE_DELETES_ROW_ID"].tolist(), fcName, registration_id)
 
     #print("ADDS:", adds, "\nUPDATES:",updates,"\nDELETES:",deleteGUIDs)
-    json = DeltasToJson(adds, updates, deleteGUIDs)
+    jsn = DeltasToJson(adds, updates, deleteGUIDs)
     
-    return json
+    return jsn
 
     #adds_out = []
     #parsed = json.loads(result)
@@ -273,6 +277,9 @@ def ApplyEdits(connection, registration_id, fcName, json_dict):
 
     for update in updates:
         Update(connection, fcName, update)
+
+    for GUID in deleteGUIDs:
+        Delete(connection, fcName, GUID)
     
     return None
 
