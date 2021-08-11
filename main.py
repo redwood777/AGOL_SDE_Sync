@@ -18,23 +18,21 @@ def Options(prompt, menu):
 def ResolveConflicts(SDE_deltas, AGOL_deltas):
     #Finds all conflicting edits. Resolves conflicts by user input. Returns revised SDE_deltas and AGOL_deltas
 
-    print('Checking for conflicts...')
+    print('Checking for conflicts...\n')
     #From here on, we will work only with global ids
     #SDE_added = GetGlobalIds(SDE_deltas['adds'])
     #AGOL_added = GetGlobalIds(AGOL_deltas['adds'])
     SDE_updated = GetGlobalIds(SDE_deltas['updates'])
     AGOL_updated = GetGlobalIds(AGOL_deltas['updates'])
     
-    #remove deletes that have already occured in destination
-    #print(AGOL_deltas['deleteIds'])
-    #print(SDE_deltas['deleteIds'])
+    #remove deletes that have already occured in destination, and store as a set
     SDE_deleted = set(SDE_deltas['deleteIds']).difference(AGOL_deltas['deleteIds'])
     AGOL_deleted = set(AGOL_deltas['deleteIds']).difference(SDE_deltas['deleteIds'])
     
-    print("SDE_deleted:", SDE_deleted)
-    print("AGOL_deleted:", AGOL_deleted)
-    print("SDE_updated:", SDE_updated)
-    print("AGOL_updated:", AGOL_updated)
+    #print("SDE_deleted:", SDE_deleted)
+    #print("AGOL_deleted:", AGOL_deleted)
+    #print("SDE_updated:", SDE_updated)
+    #print("AGOL_updated:", AGOL_updated)
 
 
     #find update/delete conflictions
@@ -44,15 +42,18 @@ def ResolveConflicts(SDE_deltas, AGOL_deltas):
     #find update/update conflictions
     both_updated = AGOL_updated.intersection(SDE_updated)
 
-    print("AGOL_updated_SDE_deleted:", AGOL_updated_SDE_deleted)
-    print("SDE_updated_AGOL_deleted:", SDE_updated_AGOL_deleted)
-    print("both_updated:", both_updated)
+    #print("AGOL_updated_SDE_deleted:", AGOL_updated_SDE_deleted)
+    #print("SDE_updated_AGOL_deleted:", SDE_updated_AGOL_deleted)
+    #print("both_updated:", both_updated)
+    
+    #print(json.dumps(AGOL_deltas, indent=4))
+    #print(json.dumps(SDE_deltas, indent=4))
 
     #calculate sum of conflicts
     total_conflicts = len(AGOL_updated_SDE_deleted) + len(SDE_updated_AGOL_deleted) + len(both_updated)
 
     if(total_conflicts < 1):
-        print('No conflicts found.')
+        print('No conflicts found.\n')
     else:
         #display sum of conflicts
         #prompt user to resolve all one way, resolve manually, show more info, or cancel
@@ -125,14 +126,45 @@ def ResolveConflicts(SDE_deltas, AGOL_deltas):
                     SDE_updated.remove(conflict)
                 elif(choice == 2):
                     AGOL_updated.remove(conflict)
-                    
+                
+        #build new json objects:
 
-    print("SDE_deleted:", SDE_deleted)
-    print("AGOL_deleted:", AGOL_deleted)
-    print("SDE_updated:", SDE_updated)
-    print("AGOL_updated:", AGOL_updated)
-    print("SDE_new_adds:", SDE_new_adds)
-    print("AGOL_new_adds:", AGOL_new_adds)
+        #lists to store new updates
+        revisedSdeUpdates = []
+        revisedAgolUpdates = []
+
+        #run through old updates and add them to new updates or adds
+        for update in SDE_deltas['updates']:
+            GUID = update['attributes']['GlobalID']
+            if GUID in SDE_updated:
+                revisedSdeUpdates.append(update)
+            if GUID in SDE_new_adds:
+                SDE_deltas['adds'].append(update)
+
+        for update in AGOL_deltas['updates']:
+            GUID = update['attributes']['GlobalID']
+            if GUID in AGOL_updated:
+                revisedAgolUpdates.append(update)
+            if GUID in AGOL_new_adds:
+                AGOL_deltas['adds'].append(update)
+
+        #overwrite old updates
+        AGOL_deltas['updates'] = revisedAgolUpdates
+        SDE_deltas['updates'] = revisedSdeUpdates
+
+    #overwrite old deletes (even if no conflicts, because deletes are checked for uniqueness above)
+    AGOL_deltas['deleteIds'] = list(AGOL_deleted)
+    SDE_deltas['deleteIds'] = list(SDE_deleted)
+
+    #print("SDE_deleted:", SDE_deleted)
+    #print("AGOL_deleted:", AGOL_deleted)
+    #print("SDE_updated:", SDE_updated)
+    #print("AGOL_updated:", AGOL_updated)
+    #print("SDE_new_adds:", SDE_new_adds)
+    #print("AGOL_new_adds:", AGOL_new_adds)
+    
+    #print(json.dumps(AGOL_deltas, indent=4))
+    #print(json.dumps(SDE_deltas, indent=4))
     
        
     return SDE_deltas, AGOL_deltas
@@ -279,6 +311,7 @@ def test():
     deltas2 = copy.deepcopy(deltas)
     deltas2['deleteIds'].append("CECC5D06-CFD4-40E7-943B-3793770411E1")
 
+    deltas, deltas2 = ResolveConflicts(deltas, deltas2)
     ResolveConflicts(deltas, deltas2)
     #print(Options('select', ['a', 'b', 'c']))
  
