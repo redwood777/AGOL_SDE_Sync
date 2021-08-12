@@ -1,11 +1,21 @@
 import json
 import copy
+#import config
 #import sql_functions as sql
 #import json_functions as jsn
 
 def GetGlobalIds(dict_in):
     #pulls global ids from adds or updates dictionary, returns as set
     return {add['attributes']['GlobalID'] for add in dict_in}
+
+def LoadConfig():
+    try:
+        import config
+        return config
+    except:
+        print('Error loading config.')
+        return False
+        #TODO: make config builder?
 
 def Options(prompt, menu):
     i = 1
@@ -170,20 +180,24 @@ def ResolveConflicts(SDE_deltas, AGOL_deltas):
     return SDE_deltas, AGOL_deltas
 
 def main():
+    #load config
+    cfg = LoadConfig()
+    
     #get database, FC name
-    server = 'inpredwgis2'
-    database = 'REDWTest'
-    fc = 'AGOL_TEST_PY_2'
+    if(cfg):
+        menu = [d['name'] for d in cfg.SQL_databases]
+        menu.append('Create new')
+        choice = Options('Select database:', menu)
     
     #check if FC has been set up before (cached in SQL table?)
         #if so, get last serverGen/SDE_STATE_ID
         #if not, ask for service URL and cache
     
     #connect to database
-    UID = 'REDW_Python'
-    PWD = 'Benefit4u!123'
+    #UID = 'REDW_Python'
+    #PWD = 'Benefit4u!123'
     
-    cnxn = sql.Connect(server, database, UID, PWD)
+    #cnxn = sql.Connect(server, database, UID, PWD)
     #check if FC has been registered as versioned
     #check that service has been set up correctly
     #extract changes from SQL
@@ -311,8 +325,10 @@ def test():
     deltas2 = copy.deepcopy(deltas)
     deltas2['deleteIds'].append("CECC5D06-CFD4-40E7-943B-3793770411E1")
 
-    deltas, deltas2 = ResolveConflicts(deltas, deltas2)
-    ResolveConflicts(deltas, deltas2)
+    config = LoadConfig()
+    print(config.name)
+    #deltas, deltas2 = ResolveConflicts(deltas, deltas2)
+    #ResolveConflicts(deltas, deltas2)
     #print(Options('select', ['a', 'b', 'c']))
  
     #connection = sql.Connect('inpredwgis2', 'REDWTest', 'REDW_Python', 'Benefit4u!123')
@@ -334,4 +350,4 @@ def test():
     #connection.close()
 
 if __name__ == '__main__':
-    test()
+    main()
