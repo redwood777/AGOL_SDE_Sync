@@ -2,7 +2,7 @@ import pyodbc
 import sys
 import pandas as pd
 import json
-import arcpy
+from arcpy import FromWKB, AsShape
 #import shapely
 #from shapely.geometry import shape
 #import geojson
@@ -17,6 +17,11 @@ def Connect(server, database, UID, PWD):
     except:
         print("Connection error:", sys.exc_info()[0])
 
+def ReadSqlMessage(query, connection):
+    cursor = connection.cursor()
+    cursor.execute(query)
+    return (cursor.rowcount) #[0][1].split('[SQL Server]')[1])
+
 def GetRegistrationId(connection, fcName):
     #Takes name of featureclass and returns registration id, or None if table has not been registered as versioned
     query = "SELECT registration_id FROM SDE_table_registry WHERE table_name = '{}'".format(fcName)
@@ -27,23 +32,50 @@ def GetRegistrationId(connection, fcName):
         print("'{}' not found in SDE_table_registry. Check that it has been registered as versioned.".format(fcName))
         return None
 
-##def GetSdeStateIdsSinceId(connection, fcName, version, lastState):
-##    #Returns a list of SDE_STATE_IDs greater than lastState.
-##    cursor = connection.cursor()
-##    query = "EXEC set_current_version '{}'".format(version)
-##    cursor.execute(query)
-##    print(cursor.messages)
-##    query = "SELECT SDE_STATE_ID FROM {}_evw WHERE SDE_STATE_ID = {}".format(fcName, lastState)
-##    data = pd.read_sql(query, connection)
-##    return data["SDE_STATE_ID"].tolist()
+def GetCurrentStateId(connection):
+    #returns current state id of DEFAULT version
+    query = "SELECT state_id FROM SDE_versions WHERE NAME='DEFAULT'" #TODO: allow for other versions?
+    response = pd.read_sql(query, connection)
+    return (response['state_id'][0])
+
+##def GetSyncs(connection, syncTableName):
+##    #loads live syncs
+##    query = "IF (EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = '{}')) PRINT 'true'; ELSE PRINT 'false';".format(syncTableName)
+##    response = ReadSqlMessage(query, connection)
+##    if (response == 'true'):
+##        query = "SELECT * FROM {}".format(syncTableName)
+##        reponse = pd.read_sql(query, connection)
+##        print response
+##    else:
+##        query = "CREATE TABLE {} (NAME nvarchar, FIRST nvarchar, SECOND nvarchar, 
+
+def GetStatesSince(connection, lastState):
+    #Returns a list of SDE_STATE_IDs belonging to DEFAULT greater than lastState.
+    query = "SELECT state_id FROM SDE_states WHERE lineage_name = 1 AND state_id > {}".format(lastState)
+    data = pd.read_sql(query, connection)
+    print data
+    print lastState
+    return ','.join([str(s) for s in data["state_id"].tolist()])
 
 def RemoveNulls(dict_in):
+    #returns dictionary with only non-null entries
     dict_in = {k: v for k, v in dict_in.items() if v is not None}
+
+    return dict_in
+
+def AddQuotes(dict_in):
+    #adds quote marks to non-float values
+    for k in dict_in.keys():
+        if not isinstance(dict_in[k], float):
+            dict_in[k] = "'{}'".format(dict_in[k])
 
     return dict_in
 
 def SdeObjectIdsToGlobalIds(connection, objectIds, fcName, registration_id):
     #returns UNORDERED list of global ids corresponding to objectIds, IN NO PARTICULAR ORDER
+    if len(objectIds) < 1:
+        return []
+    
     objectIdsStr = ','.join(str(x) for x in objectIds)
     
     query = "SELECT GLOBALID FROM {} WHERE OBJECTID IN ({})".format(fcName, objectIdsStr)
@@ -56,15 +88,15 @@ def SdeObjectIdsToGlobalIds(connection, objectIds, fcName, registration_id):
     
     return first_list + list(set(second_list) - set(first_list)) 
 
-def GetAdds(connection, registration_id, lastState):
-    #returns list of objects in adds table since lastState
+def GetAdds(connection, registration_id, states):
+    #returns list of objects in adds table with state ids in states
 
     #get rows from adds table since lastState
-    query = "SELECT * FROM a{} WHERE SDE_STATE_ID > {}".format(registration_id, lastState)
+    query = "SELECT * FROM a{} WHERE SDE_STATE_ID IN ({})".format(registration_id, states)
     adds = pd.read_sql(query, connection)
 
     #reaquire SHAPE column as WKB
-    query = "SELECT SHAPE.STAsBinary() FROM a{} WHERE SDE_STATE_ID > {}".format(registration_id, lastState)
+    query = "SELECT SHAPE.STAsBinary() FROM a{} WHERE SDE_STATE_ID IN ({})".format(registration_id, states)
     shape = pd.read_sql(query, connection)
     #print(shape['SHAPE'])
 
@@ -73,19 +105,19 @@ def GetAdds(connection, registration_id, lastState):
     print(adds['Visit_Year'])
     return adds
 
-def GetDeletes(connection, registration_id, lastState):
+def GetDeletes(connection, registration_id, states):
     #returns list of objects deleted from versioned table registered with registration id since lastState
-    query = "SELECT SDE_DELETES_ROW_ID, DELETED_AT FROM D{} WHERE DELETED_AT > {}".format(registration_id, lastState)
+    query = "SELECT SDE_DELETES_ROW_ID, DELETED_AT FROM D{} WHERE DELETED_AT IN ({})".format(registration_id, states)
     data = pd.read_sql(query, connection)
     return data #["SDE_DELETES_ROW_ID"].tolist()
 
 def WkbToJson(WKB):
-    geom = arcpy.FromWKB(WKB)
+    geom = FromWKB(WKB)
     return json.loads(geom.JSON)
 
 def JsonToWkb(jsn):
     jsn = json.dumps(jsn)
-    geom = arcpy.AsShape(jsn, True)
+    geom = AsShape(jsn, True)
     #p = shapely.wkt.loads(wkt_text)
     #from shapely import wkb
     #return (wkb.dumps(p, hex=true))
@@ -127,11 +159,12 @@ def SqlToJson(df):
         #geometry = {"wkt": shapes[i]}
         attributes = df.iloc[i-1]
         attributes = json.loads(attributes.to_json(orient='index'))
+        attributes = RemoveNulls(attributes)
         #print(attributes)
         entry = {'geometry': geometry, 'attributes': attributes}
         dict_out.append(entry)
 
-    return RemoveNulls(dict_out)
+    return dict_out
 
 def JsonToSql(deltas):
     #takes adds or updates json and turns it into sql-writable format
@@ -179,6 +212,21 @@ def JsonToDeltas(json_dict):
 ##    SRID = '26910'
 ##    return 'STGeomFromText({})'.format(text)
 
+def EditTable(query, connection, rowCount):
+    cursor = connection.cursor()
+    response = cursor.execute(query)
+
+    print("Rows affected:", response.rowcount)
+
+    if(response.rowcount != rowCount):
+        print('Error updating!\n')
+        print(query)
+        print('\n')
+        print(response.messages)
+        return False
+
+    return True
+
 def Add(connection, fcName, dict_in):
     #add a feature to the versioned view of a featureclass
     dict_in = RemoveNulls(dict_in)
@@ -186,12 +234,14 @@ def Add(connection, fcName, dict_in):
     shape = dict_in['SHAPE']
     del dict_in['SHAPE']
 
+    dict_in = AddQuotes(dict_in)
+
     keys = ','.join(dict_in.keys())
-    values = ','.join(["'{}'".format(v) for v in dict_in.values()])
+    values = ','.join(dict_in.values())
     
-    query = "INSERT INTO table_name {}_evw ({}, SHAPE) VALUES ({}, STGeomFromText('{}'));".format(fcName, keys, values, shape)
+    query = "INSERT INTO {}_evw ({}, SHAPE) VALUES ({}, geometry::STGeomFromText('{}', 26910));".format(fcName, keys, values, shape) #TODO: make SRID variable
     print(query)
-    #result = pd.read_sql(connection, query)
+    EditTable(query, connection, 1)
 
 def Update(connection, fcName, dict_in):
     #update a feature in the versioned view of a featureclass
@@ -204,28 +254,39 @@ def Update(connection, fcName, dict_in):
     globalId = dict_in['GlobalID']
     del dict_in['GlobalID']
 
-    data = ','.join(["{}='{}'".format(k,v) for k,v in dict_in.items()])
+    dict_in = AddQuotes(dict_in)
 
-    query = "UPDATE {}_evw SET {}, SHAPE=STGeomFromText('{}') WHERE GLOBALID = '{}';".format(fcName, data, shape, globalId)
+    pairs = []
+    
+    for k,v in dict_in.items():       
+        pairs.append('{}={}'.format(k, v))
 
-    print(query)
+    data = ','.join(pairs)
+    print query
+    query = "UPDATE {}_evw SET {}, SHAPE=geometry::STGeomFromText('{}',26910) WHERE GLOBALID = '{}';".format(fcName, data, shape, globalId) #TODO: make SRID variable
+
+    EditTable(query, connection, 1)
+    
 
 def Delete(connection, fcName, GUID):
     #remove feature from versioned view of featureclass
     
-    query = "DELETE FROM  {}_evw WHERE GLOBALID = '{}'".format(GUID)
+    query = "DELETE FROM  {}_evw WHERE GLOBALID = '{}'".format(fcName, GUID)
     print(query)
-    
+    EditTable(query, connection, 1)
     
 
 def ExtractChanges(connection, registration_id, fcName, lastState):
     #returns object lists for adds and updates, and list of objects deleted
 
+    #get state ids for recent edits
+    states = GetStatesSince(connection, lastState)
+    
     #get adds and deletes from delta tables
     print("Getting adds")
-    adds = GetAdds(connection, registration_id, lastState)
+    adds = GetAdds(connection, registration_id, states)
     print("Getting deletes")
-    deletes = GetDeletes(connection, registration_id, lastState)
+    deletes = GetDeletes(connection, registration_id, states)
 
     #find updates from adds and deletes:
     
@@ -269,7 +330,7 @@ def ExtractChanges(connection, registration_id, fcName, lastState):
 
 def ApplyEdits(connection, registration_id, fcName, json_dict):
     #applies deltas to versioned view. Returns success codes and new SDE_STATE_ID
-
+    print('Applying eidts')
     adds, updates, deleteGUIDs = JsonToDeltas(json_dict)
 
     for add in adds:
@@ -294,11 +355,14 @@ def test():
     #data = pd.read_sql(query, connection)
     #print(data)
 
-    registration_id = GetRegistrationId(connection, 'AGOL_TEST_PY_2')
 
-    json_dict = ExtractChanges(connection, registration_id, 'AGOL_TEST_PY_2', 0)
+    GetSyncs(connection, 'AGOL_TEST_PY_2')
 
-    ApplyEdits(connection, registration_id, 'AGOL_TEST_PY_2', json_dict)
+    #registration_id = GetRegistrationId(connection, 'AGOL_TEST_PY_2')
+
+    #json_dict = ExtractChanges(connection, registration_id, 'AGOL_TEST_PY_2', 0)
+
+    #ApplyEdits(connection, registration_id, 'AGOL_TEST_PY_2', json_dict)
     #ids = GetSdeStateIdsSinceId(connection, 'AGOL_TEST_PY_2', 'DEFAULT', 0)
     
     #deletes = sql.GetDeletes(connection, registration_id, 0)
@@ -307,6 +371,7 @@ def test():
     connection.close()
 
 if __name__ == '__main__':
-    test()
+    import main
+    main.test()
 
 
