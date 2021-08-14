@@ -2,13 +2,42 @@ def GetGlobalIds(dict_in):
     #pulls global ids from adds or updates dictionary, returns as set
     return {add['attributes']['GlobalID'] for add in dict_in}
 
-def Options(prompt, menu):
+def Options(prompt, menu, allow_filter=False, filter_string = ''):
     i = 1
     print(prompt)
-    for item in menu:
+    
+    filtered_menu = [item for item in menu if filter_string.lower() in item.lower()]
+    if(len(filtered_menu) < 1):
+        print('\nNo results. Clearing filter.\n')
+        filtered_menu = menu
+    
+    for item in filtered_menu:
         print('  {}. {}'.format(i, item))
         i+=1
-    return input('Enter selection:')
+
+    string = ''
+    if(allow_filter):
+        string = ', or type to filter'
+
+    while True:
+        response = unicode(raw_input('\nEnter selection{}:'.format(string)))
+        print('')
+        if(response.isnumeric()):
+            response = int(response)
+            if(response > 0 and response < len(menu)):
+                return response
+            else:
+                print('\nValue out of range!\n')
+        elif(allow_filter):
+            if(response == ''):
+                print('\nClearing filter.\n')
+                return Options(prompt, menu, allow_filter=True)
+            else:
+                return Options(prompt, menu, allow_filter=True, filter_string = response)
+        else:
+            print('\nInvalid response!\n')
+            
+    
 
 def ResolveConflicts(SECOND_deltas, FIRST_deltas, first_name, second_name):
     #Finds all conflicting edits. Resolves conflicts by user input. Returns revised SECOND_deltas and FIRST_deltas
@@ -162,3 +191,20 @@ def ResolveConflicts(SECOND_deltas, FIRST_deltas, first_name, second_name):
     
        
     return SECOND_deltas, FIRST_deltas
+
+logLevel = 1
+
+def SetLogLevel(cfg):
+    global logLevel
+    
+    try:
+        logLevel  = cfg.log_level
+    except:
+        logLevel = 1
+    
+
+def Debug(message, messageLevel):
+    global logLevel
+    
+    if(messageLevel <= logLevel):
+        print(message)

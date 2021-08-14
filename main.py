@@ -51,6 +51,9 @@ def ExtractChanges(service, serverGen, cfg):
         connection = sql.Connect(service['hostname'], service['database'], cfg.SQL_username, cfg.SQL_password)
         registration_id = sql.GetRegistrationId(connection, service['featureclass'])
         return sql.ExtractChanges(connection, registration_id, service['featureclass'], serverGen)
+    
+    elif(service['type'] == 'AGOL'):
+        return #TODO: put stuff here      
 
 def ApplyEdits(service, cfg, deltas):
     #wrapper for SQL/AGOL extract changes functions
@@ -64,12 +67,26 @@ def ApplyEdits(service, cfg, deltas):
 def main():
     #load config
     cfg = LoadConfig()
+
+    #load syncs
+    syncs = LoadSyncs()
+
+    #prompt user to select sync
+    menu = [s['name'] for s in syncs]
+    menu.append('Create new')
+    choice = ui.Options('Select sync:', menu, allow_filter=True)
+
+    if (choice == (len(menu))):
+        #TODO: make create new builder
+        print(None)
+    else:
+        sync = syncs[choice - 1]
     
     #get database, FC name
-    if(cfg):
-        menu = [d['name'] for d in cfg.SQL_databases]
-        menu.append('Create new')
-        choice = Options('Select database:', menu)
+##    if(cfg):
+##        menu = [d['name'] for d in cfg.SQL_databases]
+##        menu.append('Create new')
+##        choice = Options('Select database:', menu)
     
     #check if FC has been set up before (cached in SQL table?)
         #if so, get last serverGen/SDE_STATE_ID
@@ -92,6 +109,9 @@ def main():
     
 
 def test():
+    cfg = LoadConfig()
+    ui.SetLogLevel(cfg)
+    ui.Debug('gamer', 0)
 ##    cfg = LoadConfig()
 ##    syncs = LoadSyncs()
 ##
@@ -230,7 +250,7 @@ def test():
     #config = LoadConfig()
     #print(config.name)
     #deltas, deltas2 = ResolveConflicts(deltas, deltas2)
-    ui.ResolveConflicts(deltas, deltas2, 'ONE', 'TWO')
+    #ui.ResolveConflicts(deltas, deltas2, 'ONE', 'TWO')
 
     #print(LoadSyncs())
 
