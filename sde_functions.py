@@ -111,11 +111,13 @@ def GetDeletes(connection, registration_id, states):
     data = pd.read_sql(query, connection)
     return data #["SDE_DELETES_ROW_ID"].tolist()
 
-def WkbToJson(WKB):
+def WkbToEsri(WKB):
+    #converts well known binary to esri json
     geom = FromWKB(WKB)
     return json.loads(geom.JSON)
 
-def JsonToWkb(jsn):
+def EsriToWkb(jsn):
+    #converts esri json to well known binary
     jsn = json.dumps(jsn)
     geom = AsShape(jsn, True)
     #p = shapely.wkt.loads(wkt_text)
@@ -155,7 +157,7 @@ def SqlToJson(df):
 
     
     for i in df.index:
-        geometry = WkbToJson(shapes[i])
+        geometry = WkbToEsri(shapes[i])
         #geometry = {"wkt": shapes[i]}
         attributes = df.iloc[i-1]
         attributes = json.loads(attributes.to_json(orient='index'))
@@ -172,7 +174,7 @@ def JsonToSql(deltas):
     
     for delta in deltas:
         #turn geometry json into syntax for SQL
-        SHAPE = JsonToWkb(delta['geometry'])
+        SHAPE = EsriToWkb(delta['geometry'])
 
         #extract attributes
         attributes = delta['attributes']
@@ -215,14 +217,21 @@ def JsonToDeltas(json_dict):
 def EditTable(query, connection, rowCount):
     cursor = connection.cursor()
     response = cursor.execute(query)
+    
+    checks = 0
+    while(response.rowcount == -1):
+        time.sleep(0.01)
+        checks += 1
+
+        if (checks > 100):
+            print("SQL Query timed out!")
+            return False
 
     print("Rows affected:", response.rowcount)
-
+          
     if(response.rowcount != rowCount):
-        print('Error updating!\n')
-        print(query)
-        print('\n')
-        print(response.messages)
+        print('Unexpected number of rows edited: {}\n'.format(response.rowcount))
+        print('Executed SQL query: {}\n'.format(query))
         return False
 
     return True

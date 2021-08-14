@@ -10,42 +10,41 @@ def Options(prompt, menu):
         i+=1
     return input('Enter selection:')
 
-def ResolveConflicts(SDE_deltas, AGOL_deltas):
-    #Finds all conflicting edits. Resolves conflicts by user input. Returns revised SDE_deltas and AGOL_deltas
+def ResolveConflicts(SECOND_deltas, FIRST_deltas, first_name, second_name):
+    #Finds all conflicting edits. Resolves conflicts by user input. Returns revised SECOND_deltas and FIRST_deltas
 
     print('Checking for conflicts...\n')
     #From here on, we will work only with global ids
-    #SDE_added = GetGlobalIds(SDE_deltas['adds'])
-    #AGOL_added = GetGlobalIds(AGOL_deltas['adds'])
-    SDE_updated = GetGlobalIds(SDE_deltas['updates'])
-    AGOL_updated = GetGlobalIds(AGOL_deltas['updates'])
+    #SECOND_added = GetGlobalIds(SECOND_deltas['adds'])
+    #FIRST_added = GetGlobalIds(FIRST_deltas['adds'])
+    SECOND_updated = GetGlobalIds(SECOND_deltas['updates'])
+    FIRST_updated = GetGlobalIds(FIRST_deltas['updates'])
     
     #remove deletes that have already occured in destination, and store as a set
-    SDE_deleted = set(SDE_deltas['deleteIds']).difference(AGOL_deltas['deleteIds'])
-    AGOL_deleted = set(AGOL_deltas['deleteIds']).difference(SDE_deltas['deleteIds'])
+    SECOND_deleted = set(SECOND_deltas['deleteIds']).difference(FIRST_deltas['deleteIds'])
+    FIRST_deleted = set(FIRST_deltas['deleteIds']).difference(SECOND_deltas['deleteIds'])
     
-    #print("SDE_deleted:", SDE_deleted)
-    #print("AGOL_deleted:", AGOL_deleted)
-    #print("SDE_updated:", SDE_updated)
-    #print("AGOL_updated:", AGOL_updated)
-
+    #print("SECOND_deleted:", SECOND_deleted)
+    #print("FIRST_deleted:", FIRST_deleted)
+    #print("SECOND_updated:", SECOND_updated)
+    #print("FIRST_updated:", FIRST_updated)
 
     #find update/delete conflictions
-    AGOL_updated_SDE_deleted = AGOL_updated.intersection(SDE_deleted)
-    SDE_updated_AGOL_deleted = SDE_updated.intersection(AGOL_deleted)
+    FIRST_updated_SECOND_deleted = FIRST_updated.intersection(SECOND_deleted)
+    SECOND_updated_FIRST_deleted = SECOND_updated.intersection(FIRST_deleted)
 
     #find update/update conflictions
-    both_updated = AGOL_updated.intersection(SDE_updated)
+    both_updated = FIRST_updated.intersection(SECOND_updated)
 
-    #print("AGOL_updated_SDE_deleted:", AGOL_updated_SDE_deleted)
-    #print("SDE_updated_AGOL_deleted:", SDE_updated_AGOL_deleted)
+    #print("FIRST_updated_SECOND_deleted:", FIRST_updated_SECOND_deleted)
+    #print("SECOND_updated_FIRST_deleted:", SECOND_updated_FIRST_deleted)
     #print("both_updated:", both_updated)
     
-    #print(json.dumps(AGOL_deltas, indent=4))
-    #print(json.dumps(SDE_deltas, indent=4))
+    #print(json.dumps(FIRST_deltas, indent=4))
+    #print(json.dumps(SECOND_deltas, indent=4))
 
     #calculate sum of conflicts
-    total_conflicts = len(AGOL_updated_SDE_deleted) + len(SDE_updated_AGOL_deleted) + len(both_updated)
+    total_conflicts = len(FIRST_updated_SECOND_deleted) + len(SECOND_updated_FIRST_deleted) + len(both_updated)
 
     if(total_conflicts < 1):
         print('No conflicts found.\n')
@@ -53,113 +52,113 @@ def ResolveConflicts(SDE_deltas, AGOL_deltas):
         #display sum of conflicts
         #prompt user to resolve all one way, resolve manually, show more info, or cancel
         prompt = '{} conflicts found. Choose conflict resolution:'.format(total_conflicts)
-        menu = ['Prioritize AGOL Changes', 'Prioritize SDE Changes', 'Choose for each conflict', 'More info', 'Cancel']
+        menu = ['Prioritize {} Changes'.format(first_name), 'Prioritize {} Changes'.format(second_name), 'Choose for each conflict', 'More info', 'Cancel']
         choice = Options(prompt, menu)
 
         #in update/delete conflicts, update will either become add or be removed
-        AGOL_updated -= AGOL_updated_SDE_deleted
-        SDE_updated -= SDE_updated_AGOL_deleted
+        FIRST_updated -= FIRST_updated_SECOND_deleted
+        SECOND_updated -= SECOND_updated_FIRST_deleted
         
         #print(choice)
         #sets to store global ids of objects being moved from updates to adds
-        AGOL_new_adds = set()
-        SDE_new_adds = set()
+        FIRST_new_adds = set()
+        SECOND_new_adds = set()
 
-        #if all in favor of AGOL:
+        #if all in favor of FIRST:
         if (choice == 1):
-            #move AGOL_updated_SDE_deleted from AGOL_updates to AGOL_adds
-            AGOL_new_adds = AGOL_updated_SDE_deleted
+            #move FIRST_updated_SECOND_deleted from FIRST_updates to FIRST_adds
+            FIRST_new_adds = FIRST_updated_SECOND_deleted
             
-            #remove AGOL_updated_SDE_deleted from SDE_deletes
-            SDE_deleted -= AGOL_updated_SDE_deleted
+            #remove FIRST_updated_SECOND_deleted from SECOND_deletes
+            SECOND_deleted -= FIRST_updated_SECOND_deleted
 
-            #remove both_updated from SDE updated
-            SDE_updated -= both_updated
+            #remove both_updated from SECOND updated
+            SECOND_updated -= both_updated
 
-        #same for all in favor of SDE:
+        #same for all in favor of SECOND:
         if (choice == 2):
-            SDE_new_adds = SDE_updated_AGOL_deleted         
-            AGOL_deleted -= SDE_updated_AGOL_deleted
-            AGOL_updated -= both_updated
+            SECOND_new_adds = SECOND_updated_FIRST_deleted         
+            FIRST_deleted -= SECOND_updated_FIRST_deleted
+            FIRST_updated -= both_updated
 
         #if manual:
         if (choice == 3):
-            #run through all conflict lists, print out conflict, prompt to resolve in favor of AGOL or SDE
-            menu = ['Keep update from AGOL', 'Keep delete from SDE']
+            #run through all conflict lists, print out conflict, prompt to resolve in favor of FIRST or SECOND
+            menu = ['Keep update from {}'.format(first_name), 'Keep delete from {}'.format(second_name)]
             #for update/delete conflicts:
-            for conflict in AGOL_updated_SDE_deleted:
-                prompt = 'Object "{}" was updated in AGOL and deleted in SDE. Choose:'.format(conflict)
+            for conflict in FIRST_updated_SECOND_deleted:
+                prompt = 'Object "{}" was updated in {} and deleted in {}. Choose:'.format(conflict, first_name, second_name)
                 choice = Options(prompt, menu)
                 
                 #if in favor of update: update -> add, delete removed
                 if (choice == 1):
-                    AGOL_new_adds.add(conflict)
-                    SDE_deleted.remove(conflict)
+                    FIRST_new_adds.add(conflict)
+                    SECOND_deleted.remove(conflict)
                 #if in favor of delete: update removed (already done above)
 
-            menu = ['Keep delete from AGOL', 'Keep update from SDE']
+            menu = ['Keep delete from {}'.format(first_name), 'Keep update from {}'.format(second_name)]
             
-            for conflict in SDE_updated_AGOL_deleted:
-                prompt = 'Object "{}" was deleted in AGOL and updated in SDE. Choose:'.format(conflict)
+            for conflict in SECOND_updated_FIRST_deleted:
+                prompt = 'Object "{}" was deleted in {} and updated in {}. Choose:'.format(conflict, first_name, second_name)
                 choice = Options(prompt, menu)
                 
                 #if in favor of update: update -> add, delete removed
                 if (choice == 2):
-                    SDE_new_adds.add(conflict)
-                    AGOL_deleted.remove(conflict)
+                    SECOND_new_adds.add(conflict)
+                    FIRST_deleted.remove(conflict)
                 #if in favor of delete: update removed (already done above)
                 
 
             #for update/update conflicts:
-            menu = ['Keep update from AGOL', 'Keep update from SDE']
+            menu = ['Keep update from {}'.format(first_name), 'Keep update from {}'.format(second_name)]
 
             for conflict in both_updated:
-                prompt = 'Object "{}" was updated in both AGOL and SDE. Choose:'.format(conflict)
+                prompt = 'Object "{}" was updated in both {} and {}. Choose:'.format(conflict, first_name, second_name)
                 choice = Options(prompt, menu)
                 #losing update removed
                 if(choice == 1):
-                    SDE_updated.remove(conflict)
+                    SECOND_updated.remove(conflict)
                 elif(choice == 2):
-                    AGOL_updated.remove(conflict)
+                    FIRST_updated.remove(conflict)
                 
         #build new json objects:
 
         #lists to store new updates
-        revisedSdeUpdates = []
-        revisedAgolUpdates = []
+        revisedSECONDUpdates = []
+        revisedFIRSTUpdates = []
 
         #run through old updates and add them to new updates or adds
-        for update in SDE_deltas['updates']:
+        for update in SECOND_deltas['updates']:
             GUID = update['attributes']['GlobalID']
-            if GUID in SDE_updated:
-                revisedSdeUpdates.append(update)
-            if GUID in SDE_new_adds:
-                SDE_deltas['adds'].append(update)
+            if GUID in SECOND_updated:
+                revisedSECONDUpdates.append(update)
+            if GUID in SECOND_new_adds:
+                SECOND_deltas['adds'].append(update)
 
-        for update in AGOL_deltas['updates']:
+        for update in FIRST_deltas['updates']:
             GUID = update['attributes']['GlobalID']
-            if GUID in AGOL_updated:
-                revisedAgolUpdates.append(update)
-            if GUID in AGOL_new_adds:
-                AGOL_deltas['adds'].append(update)
+            if GUID in FIRST_updated:
+                revisedFIRSTUpdates.append(update)
+            if GUID in FIRST_new_adds:
+                FIRST_deltas['adds'].append(update)
 
         #overwrite old updates
-        AGOL_deltas['updates'] = revisedAgolUpdates
-        SDE_deltas['updates'] = revisedSdeUpdates
+        FIRST_deltas['updates'] = revisedFIRSTUpdates
+        SECOND_deltas['updates'] = revisedSECONDUpdates
 
     #overwrite old deletes (even if no conflicts, because deletes are checked for uniqueness above)
-    AGOL_deltas['deleteIds'] = list(AGOL_deleted)
-    SDE_deltas['deleteIds'] = list(SDE_deleted)
+    FIRST_deltas['deleteIds'] = list(FIRST_deleted)
+    SECOND_deltas['deleteIds'] = list(SECOND_deleted)
 
-    #print("SDE_deleted:", SDE_deleted)
-    #print("AGOL_deleted:", AGOL_deleted)
-    #print("SDE_updated:", SDE_updated)
-    #print("AGOL_updated:", AGOL_updated)
-    #print("SDE_new_adds:", SDE_new_adds)
-    #print("AGOL_new_adds:", AGOL_new_adds)
+    #print("SECOND_deleted:", SECOND_deleted)
+    #print("FIRST_deleted:", FIRST_deleted)
+    #print("SECOND_updated:", SECOND_updated)
+    #print("FIRST_updated:", FIRST_updated)
+    #print("SECOND_new_adds:", SECOND_new_adds)
+    #print("FIRST_new_adds:", FIRST_new_adds)
     
-    #print(json.dumps(AGOL_deltas, indent=4))
-    #print(json.dumps(SDE_deltas, indent=4))
+    #print(json.dumps(FIRST_deltas, indent=4))
+    #print(json.dumps(SECOND_deltas, indent=4))
     
        
-    return SDE_deltas, AGOL_deltas
+    return SECOND_deltas, FIRST_deltas
