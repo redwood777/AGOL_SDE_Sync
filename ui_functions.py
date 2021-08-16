@@ -1,19 +1,21 @@
+import json
+
 def GetGlobalIds(dict_in):
     #pulls global ids from adds or updates dictionary, returns as set
     return {add['attributes']['GlobalID'] for add in dict_in}
 
 def Options(prompt, menu, allow_filter=False, filter_string = ''):
-    i = 1
     print(prompt)
     
     filtered_menu = [item for item in menu if filter_string.lower() in item.lower()]
     if(len(filtered_menu) < 1):
         print('\nNo results. Clearing filter.\n')
         filtered_menu = menu
-    
+
+    i = 1
     for item in filtered_menu:
         print('  {}. {}'.format(i, item))
-        i+=1
+        i += 1
 
     string = ''
     if(allow_filter):
@@ -24,7 +26,7 @@ def Options(prompt, menu, allow_filter=False, filter_string = ''):
         print('')
         if(response.isnumeric()):
             response = int(response)
-            if(response > 0 and response < len(menu)):
+            if(response > 0 and response <= len(filtered_menu)):
                 return response
             else:
                 print('\nValue out of range!\n')
@@ -39,7 +41,7 @@ def Options(prompt, menu, allow_filter=False, filter_string = ''):
             
     
 
-def ResolveConflicts(SECOND_deltas, FIRST_deltas, first_name, second_name):
+def ResolveConflicts(FIRST_deltas, SECOND_deltas, first_name, second_name):
     #Finds all conflicting edits. Resolves conflicts by user input. Returns revised SECOND_deltas and FIRST_deltas
 
     print('Checking for conflicts...\n')
@@ -53,10 +55,10 @@ def ResolveConflicts(SECOND_deltas, FIRST_deltas, first_name, second_name):
     SECOND_deleted = set(SECOND_deltas['deleteIds']).difference(FIRST_deltas['deleteIds'])
     FIRST_deleted = set(FIRST_deltas['deleteIds']).difference(SECOND_deltas['deleteIds'])
     
-    #print("SECOND_deleted:", SECOND_deleted)
-    #print("FIRST_deleted:", FIRST_deleted)
-    #print("SECOND_updated:", SECOND_updated)
-    #print("FIRST_updated:", FIRST_updated)
+    print("SECOND_deleted:", SECOND_deleted)
+    print("FIRST_deleted:", FIRST_deleted)
+    print("SECOND_updated:", SECOND_updated)
+    print("FIRST_updated:", FIRST_updated)
 
     #find update/delete conflictions
     FIRST_updated_SECOND_deleted = FIRST_updated.intersection(SECOND_deleted)
@@ -65,12 +67,14 @@ def ResolveConflicts(SECOND_deltas, FIRST_deltas, first_name, second_name):
     #find update/update conflictions
     both_updated = FIRST_updated.intersection(SECOND_updated)
 
-    #print("FIRST_updated_SECOND_deleted:", FIRST_updated_SECOND_deleted)
-    #print("SECOND_updated_FIRST_deleted:", SECOND_updated_FIRST_deleted)
-    #print("both_updated:", both_updated)
-    
-    #print(json.dumps(FIRST_deltas, indent=4))
-    #print(json.dumps(SECOND_deltas, indent=4))
+    print("FIRST_updated_SECOND_deleted:", FIRST_updated_SECOND_deleted)
+    print("SECOND_updated_FIRST_deleted:", SECOND_updated_FIRST_deleted)
+    print("both_updated:", both_updated)
+
+    print('first deltas:')
+    print(json.dumps(FIRST_deltas, indent=4))
+    print('second deltas:')
+    print(json.dumps(SECOND_deltas, indent=4))
 
     #calculate sum of conflicts
     total_conflicts = len(FIRST_updated_SECOND_deleted) + len(SECOND_updated_FIRST_deleted) + len(both_updated)
@@ -175,22 +179,26 @@ def ResolveConflicts(SECOND_deltas, FIRST_deltas, first_name, second_name):
         FIRST_deltas['updates'] = revisedFIRSTUpdates
         SECOND_deltas['updates'] = revisedSECONDUpdates
 
+        print("SECOND_deleted:", SECOND_deleted)
+        print("FIRST_deleted:", FIRST_deleted)
+        print("SECOND_updated:", SECOND_updated)
+        print("FIRST_updated:", FIRST_updated)
+        try:
+            print("SECOND_new_adds:", SECOND_new_adds)
+            print("FIRST_new_adds:", FIRST_new_adds)
+        except:
+            print('')
+        
+        print('first deltas:')
+        print(json.dumps(FIRST_deltas, indent=4))
+        print('second deltas:')
+        print(json.dumps(SECOND_deltas, indent=4))
+
     #overwrite old deletes (even if no conflicts, because deletes are checked for uniqueness above)
     FIRST_deltas['deleteIds'] = list(FIRST_deleted)
     SECOND_deltas['deleteIds'] = list(SECOND_deleted)
-
-    #print("SECOND_deleted:", SECOND_deleted)
-    #print("FIRST_deleted:", FIRST_deleted)
-    #print("SECOND_updated:", SECOND_updated)
-    #print("FIRST_updated:", FIRST_updated)
-    #print("SECOND_new_adds:", SECOND_new_adds)
-    #print("FIRST_new_adds:", FIRST_new_adds)
-    
-    #print(json.dumps(FIRST_deltas, indent=4))
-    #print(json.dumps(SECOND_deltas, indent=4))
-    
        
-    return SECOND_deltas, FIRST_deltas
+    return FIRST_deltas, SECOND_deltas
 
 logLevel = 1
 

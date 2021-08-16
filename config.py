@@ -15,6 +15,6 @@ AGOL_password = 'Benefit4u!'
 #1 = prints all major operations
 #2 = prints all major and minor operations
 #3 = probably prints more than you need
-log_level = 1
+log_level = 2
 
 
