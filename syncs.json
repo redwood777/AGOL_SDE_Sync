@@ -1,0 +1,3 @@
+[
+{"name": "AGOL_TEST_PY_2/AGOL_TEST_PY3", "first": {"type": "SDE", "hostname": "inpredwgis2", "database": "REDWTest", "featureclass": "AGOL_TEST_PY_2"}, 
+"second": {"type": "SDE", "hostname": "inpredwgis2", "database": "REDWTest", "featureclass": "AGOL_TEST_PY_3"}, "first_servergen": 4, "second_servergen": 0}]
