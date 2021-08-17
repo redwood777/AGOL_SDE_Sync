@@ -4,22 +4,23 @@ import pandas as pd
 import json
 from arcpy import FromWKB, AsShape
 from ui_functions import Debug
+import time
 #import shapely
 #from shapely.geometry import shape
 #import geojson
 
 def Connect(server, database, UID, PWD):
-    Debug('Connecting to SQL server', 2)
+    Debug('Connecting to SQL Server\n', 2)
     
     connection_string = 'Driver={{SQL Server}};Server={};Database={};User Id={};Password={}'.format(server, database, UID, PWD)
 
-    Debug('SQL Connection string: "{}"'.format(connection_string), 3)
+    Debug('   SQL Connection string: "{}"\n'.format(connection_string), 3)
     
     try:
         connection = pyodbc.connect(connection_string)
         return connection
     except:
-        print("Connection error:", sys.exc_info()[0])
+        print("   Connection error:", sys.exc_info()[0])
 
 def ReadSqlMessage(query, connection):
     cursor = connection.cursor()
@@ -27,7 +28,7 @@ def ReadSqlMessage(query, connection):
     return (cursor.rowcount) #[0][1].split('[SQL Server]')[1])
 
 def ReadSQLWithDebug(query, connection):
-    Debug('SQL Query: "{}"'.format(query), 3)
+    Debug('SQL Query: "{}"\n'.format(query), 3)
     return pd.read_sql(query, connection)
           
 
@@ -43,10 +44,10 @@ def GetRegistrationId(connection, fcName):
     try:
         registration_id = data["registration_id"][0]
     except:
-        print("'{}' not found in SDE_table_registry. Check that it has been registered as versioned.".format(fcName))
+        print("   '{}' not found in SDE_table_registry. Check that it has been registered as versioned.\n".format(fcName))
         return None
 
-    Debug('Registration id: {}'.format(registration_id), 2)
+    Debug('   Registration id: {}\n'.format(registration_id), 2)
     return registration_id
 
 def GetCurrentStateId(connection):
@@ -59,9 +60,11 @@ def GetCurrentStateId(connection):
     try:
         state_id = response['state_id'][0]
     except:
-        print('Fatal error! Could not aquire current state id.')
+        print('   Fatal error! Could not aquire current state id.\n')
         exit()
-    return 
+
+    Debug('   SDE state id: {}\n'.format(state_id), 2)
+    return int(state_id)
 
 ##def GetSyncs(connection, syncTableName):
 ##    #loads live syncs
@@ -75,14 +78,15 @@ def GetCurrentStateId(connection):
 ##        query = "CREATE TABLE {} (NAME nvarchar, FIRST nvarchar, SECOND nvarchar, 
 
 def GetStatesSince(connection, lastState):
-    #Returns a list of SDE_STATE_IDs belonging to DEFAULT greater than lastState.
+    #Returns a list of SDE_STATE_IDs belonging to DEFAULT greater than lastState, and less than current state (in progress edits will have state ids > current state).
 
-    Debug('Getting DEFAULT version SDE since state {}'.format(lastState), 2)
+    Debug('Getting DEFAULT version SDE states since state {}\n'.format(lastState), 2)
+
+    currentState = GetCurrentStateId(connection)
         
-    query = "SELECT state_id FROM SDE_states WHERE lineage_name = 1 AND state_id > {}".format(lastState)
+    query = "SELECT state_id FROM SDE_states WHERE lineage_name = 1 AND state_id > {} AND state_id <= {}".format(lastState, currentState)
     data = ReadSQLWithDebug(query, connection)
-    print data
-    print lastState
+    
     return ','.join([str(s) for s in data["state_id"].tolist()])
 
 def RemoveNulls(dict_in):
@@ -110,7 +114,7 @@ def SdeObjectIdsToGlobalIds(connection, objectIds, fcName, registration_id):
     
     objectIdsStr = ','.join(str(x) for x in objectIds)
 
-    Debug('Object ids: {}\n'.format(objectIdsStr), 3)
+    Debug('   Object ids: {}\n'.format(objectIdsStr), 3)
     
     query = "SELECT GLOBALID FROM {} WHERE OBJECTID IN ({})".format(fcName, objectIdsStr)
     data = ReadSQLWithDebug(query, connection)
@@ -131,14 +135,15 @@ def GetAdds(connection, registration_id, states):
     query = "SELECT * FROM a{} WHERE SDE_STATE_ID IN ({})".format(registration_id, states)
     adds = ReadSQLWithDebug(query, connection)
 
-    #reaquire SHAPE column as WKB
-    query = "SELECT SHAPE.STAsBinary() FROM a{} WHERE SDE_STATE_ID IN ({})".format(registration_id, states)
-    shape = ReadSQLWithDebug(query, connection)
-    #print(shape['SHAPE'])
+    if(len(adds.index) > 0):
+        #reaquire SHAPE column as WKB
+        query = "SELECT SHAPE.STAsBinary() FROM a{} WHERE SDE_STATE_ID IN ({})".format(registration_id, states)
+        shape = ReadSQLWithDebug(query, connection)
+        #print(shape['SHAPE'])
 
-    #replace shape column with text
-    adds['SHAPE'] = shape.values
-    print(adds['Visit_Year'])
+        #replace shape column with text
+        adds['SHAPE'] = shape.values
+
     return adds
 
 def GetDeletes(connection, registration_id, states):
@@ -152,23 +157,23 @@ def GetDeletes(connection, registration_id, states):
 
 def WkbToEsri(WKB):
     #converts well known binary to esri json
-    Debug('Converting WKB to Esri Json', 2)
-    Debug('WKB (as hex): {}'.format(hex(WKB)), 3)
+    Debug('   Converting WKB to Esri Json', 2)
+    Debug('      WKB (as hex): {}'.format(WKB), 3)
     
     geom = FromWKB(WKB)
     esri = geom.JSON
     
-    Debug('Converted Esri Json: {}'.format(esri), 3)
+    Debug('      Converted Esri Json: {}'.format(esri), 3)
     return json.loads(esri)
 
 def EsriToWkb(jsn):
     #converts esri json to well known text
 
-    Debug('Converting Esri Json to WKT', 2)
+    Debug('   Converting Esri Json to WKT', 2)
     
     jsn = json.dumps(jsn)
     
-    Debug('Esri Json: {}'.format(jsn), 3)
+    Debug('      Esri Json: {}\n'.format(jsn), 3)
           
     geom = AsShape(jsn, True)
     #p = shapely.wkt.loads(wkt_text)
@@ -177,7 +182,7 @@ def EsriToWkb(jsn):
     #print(geom.WKB)
     wkt = geom.WKT
 
-    Debug('Converted WKT: {}'.format(wkt), 3)
+    Debug('      Converted WKT: {}\n'.format(wkt), 3)
     
     return wkt
 
@@ -209,12 +214,11 @@ def SqlToJson(df):
     #separate shape column from dataframe
     shapes = df['SHAPE']
     df = df.drop(labels='SHAPE', axis='columns')
-
     
-    for i in df.index:
-        geometry = WkbToEsri(shapes[i])
+    for i in range(0, len(df.index)):
+        geometry = WkbToEsri(shapes.iloc[i])
         #geometry = {"wkt": shapes[i]}
-        attributes = df.iloc[i-1]
+        attributes = df.iloc[i]
         attributes = json.loads(attributes.to_json(orient='index'))
         attributes = RemoveNulls(attributes)
         #print(attributes)
@@ -248,17 +252,16 @@ def SqlDeltasToJson(adds, updates, deleteGUIDs):
     adds_json = SqlToJson(adds)
     updates_json = SqlToJson(updates)
 
-    deleteGUIDs = ['{{{0}}}'.format(delete) for delete in deleteGUIDs]
+    #deleteGUIDs = ['{{{0}}}'.format(delete) for delete in deleteGUIDs]
 
     dict_out = {"adds": adds_json, "updates": updates_json, "deleteIds": deleteGUIDs}
-    print(json.dumps(dict_out, indent=4))
 
     return dict_out
 
 def JsonToSqlDeltas(json_dict):
     #turns JSON into adds, updates, and deletes in SQL form
 
-    Debug('Converting json to adds, updates, and deletes for SQL...', 2)
+    Debug('Converting json to adds, updates, and deletes for SQL...\n', 2)
         
     adds_json = json_dict["adds"]
     updates_json = json_dict["updates"]
@@ -276,25 +279,36 @@ def JsonToSqlDeltas(json_dict):
 
 def EditTable(query, connection, rowCount):
     cursor = connection.cursor()
-    response = cursor.execute(query)
     
-    checks = 0
-    while(response.rowcount == -1):
-        time.sleep(0.01)
-        checks += 1
-
-        if (checks > 100):
-            print("SQL Query timed out!")
-            return False
-
-    print("Rows affected:", response.rowcount)
-          
-    if(response.rowcount != rowCount):
-        print('Unexpected number of rows edited: {}\n'.format(response.rowcount))
-        print('Executed SQL query: {}\n'.format(query))
+    try:     
+        cursor.execute(query)
+    except:
+        print('  Error executing SQL!\n')
+        print('  Executed SQL query: {}\n'.format(query))
+        print('  Rolling back SQL edits and exiting.')
+        connection.rollback()
+        connection.close()
+        exit()
         return False
 
     return True
+    
+##    checks = 0
+##    while(cursor.rowcount == -1):
+##        time.sleep(0.05)
+##        checks += 1
+##
+##        if (checks > 200):
+##            print("  SQL Query timed out!\n")
+##            
+##            return False
+
+##    Debug("  Rows affected: {}\n".format(cursor.rowcount), 2)
+##          
+##    if(cursor.rowcount != rowCount):
+##        print('  Unexpected number of rows affected: {}\n'.format(cursor.rowcount))
+##        print('  Executed SQL query: {}\n'.format(query))
+##        return False
 
 def Add(connection, fcName, dict_in):
     #add a feature to the versioned view of a featureclass
@@ -311,14 +325,14 @@ def Add(connection, fcName, dict_in):
     try:
           globalId = dict_in['GlobalID']
     except:
-          print('ERROR! Update object has no global ID!')
+          print('ERROR! Update object has no global ID!\n')
           print(json.dumps(dict_in))
 
-    Debug('Adding object {}'.format(globalId), 2)
+    Debug('Adding object {}\n'.format(globalId), 2)
     
     query = "INSERT INTO {}_evw ({}, SHAPE) VALUES ({}, geometry::STGeomFromText('{}', 26910));".format(fcName, keys, values, shape) #TODO: make SRID variable
-    print(query)
-    EditTable(query, connection, 1)
+    
+    return EditTable(query, connection, 1)
 
 def Update(connection, fcName, dict_in):
     #update a feature in the versioned view of a featureclass
@@ -331,7 +345,7 @@ def Update(connection, fcName, dict_in):
     globalId = dict_in['GlobalID']
     del dict_in['GlobalID']
 
-    Debug('Updating object {}'.format(globalId), 2)
+    Debug('Updating object {}\n'.format(globalId), 2)
 
     dict_in = AddQuotes(dict_in)
 
@@ -344,17 +358,17 @@ def Update(connection, fcName, dict_in):
 
     query = "UPDATE {}_evw SET {}, SHAPE=geometry::STGeomFromText('{}',26910) WHERE GLOBALID = '{}';".format(fcName, data, shape, globalId) #TODO: make SRID variable
 
-    EditTable(query, connection, 1)
+    return EditTable(query, connection, 1)
     
 
 def Delete(connection, fcName, GUID):
     #remove feature from versioned view of featureclass
 
-    Debug('Deleting object {}'.format(GUID), 2)
+    Debug('Deleting object {}\n'.format(GUID), 2)
     
     query = "DELETE FROM  {}_evw WHERE GLOBALID = '{}'".format(fcName, GUID)
     
-    EditTable(query, connection, 1)
+    return EditTable(query, connection, 1)
     
 
 def ExtractChanges(connection, registration_id, fcName, lastState):
@@ -363,6 +377,10 @@ def ExtractChanges(connection, registration_id, fcName, lastState):
 
     #get state ids for recent edits
     states = GetStatesSince(connection, lastState)
+
+    if(len(states) < 1):
+        #No state ids to check
+        return {'adds': [], 'updates':[], 'deleteIds': []}
     
     #get adds and deletes from delta tables
     adds = GetAdds(connection, registration_id, states)
@@ -408,7 +426,7 @@ def ExtractChanges(connection, registration_id, fcName, lastState):
 
 def ApplyEdits(connection, registration_id, fcName, json_dict):
     #applies deltas to versioned view. Returns success codes and new SDE_STATE_ID
-    print('Applying eidts')
+    print('Applying edits...\n')
     adds, updates, deleteGUIDs = JsonToSqlDeltas(json_dict)
 
     for add in adds:

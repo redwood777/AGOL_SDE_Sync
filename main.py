@@ -6,8 +6,7 @@
     
 import json
 import copy
-#import config
-#import sde_functions as sde
+import sde_functions as sde
 #import agol_functions as agol
 import ui_functions as ui
 
@@ -41,6 +40,12 @@ def LoadSyncs():
 
 def WriteSyncs(syncs):
     #writes sync.json with data in syncs
+    try:
+        json.dumps(syncs)
+    except:
+        print("Invalid syncs!")
+        return
+    
     syncs_file = open('syncs.json', 'w')
     json.dump(syncs, syncs_file, indent=4)
     syncs_file.close()
@@ -48,9 +53,12 @@ def WriteSyncs(syncs):
 def ExtractChanges(service, serverGen, cfg):
     #wrapper for SQL/AGOL extract changes functions
     if(service['type'] == 'SDE'):
-        connection = sql.Connect(service['hostname'], service['database'], cfg.SQL_username, cfg.SQL_password)
-        registration_id = sql.GetRegistrationId(connection, service['featureclass'])
-        return sql.ExtractChanges(connection, registration_id, service['featureclass'], serverGen)
+        connection = sde.Connect(service['hostname'], service['database'], cfg.SQL_username, cfg.SQL_password)
+        registration_id = sde.GetRegistrationId(connection, service['featureclass'])
+        deltas = sde.ExtractChanges(connection, registration_id, service['featureclass'], serverGen)
+        connection.close()
+        
+        return deltas
     
     elif(service['type'] == 'AGOL'):
         return #TODO: put stuff here      
@@ -59,14 +67,18 @@ def ApplyEdits(service, cfg, deltas):
     #wrapper for SQL/AGOL extract changes functions
     
     if(service['type'] == 'SDE'):
-        connection = sql.Connect(service['hostname'], service['database'], cfg.SQL_username, cfg.SQL_password)
-        registration_id = sql.GetRegistrationId(connection, service['featureclass'])
-        sql.ApplyEdits(connection, registration_id, service['featureclass'], deltas)
-        #print(sql.GetStatesSince(connection, 0))  
+        connection = sde.Connect(service['hostname'], service['database'], cfg.SQL_username, cfg.SQL_password)
+        registration_id = sde.GetRegistrationId(connection, service['featureclass'])
+        sde.ApplyEdits(connection, registration_id, service['featureclass'], deltas)
+        connection.commit()
+        state_id = sde.GetCurrentStateId(connection) 
+        connection.close()
+        return state_id
 
 def main():
     #load config
     cfg = LoadConfig()
+    ui.SetLogLevel(cfg)
 
     #load syncs
     syncs = LoadSyncs()
@@ -81,6 +93,24 @@ def main():
         print(None)
     else:
         sync = syncs[choice - 1]
+
+    #Extract changes from both services
+    first_deltas = ExtractChanges(sync['first'], sync['first_servergen'], cfg)
+    second_deltas = ExtractChanges(sync['second'], sync['second_servergen'], cfg)
+    
+    #reconcile changes
+    first_deltas, second_deltas = ui.ResolveConflicts(first_deltas, second_deltas, 'PY_2', 'PY_3')
+    
+    #Apply edits
+    second_servergen = ApplyEdits(sync['second'], cfg, first_deltas)
+    first_servergen = ApplyEdits(sync['first'], cfg, second_deltas)
+
+    #Update servergens
+    syncs[choice - 1]['first_servergen'] = first_servergen
+    syncs[choice - 1]['second_servergen'] = second_servergen
+    WriteSyncs(syncs)
+
+    print('Done!')
     
     #get database, FC name
 ##    if(cfg):
@@ -261,4 +291,4 @@ def test():
     #connection.close()
 
 if __name__ == '__main__':
-    test()
+    main()
