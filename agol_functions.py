@@ -15,6 +15,7 @@ def GetURL(base_url, dictURL):
         for k,v in dictURL.items():
                 base_url += '{}={}&'.format(k,v)
         base_url += 'f=json'
+        print(base_url)
         return base_url
         
 def GetToken(base_url, username, password):
@@ -38,13 +39,24 @@ def GetToken(base_url, username, password):
 	return aToken
 
 def CheckService(url, token):
+        update = {"f" : "json",
+                  "token" : token,
+                  "asynch" : True,
+                  "updateDefinition" : {"capabilities" : "Create,Delete,Query,Update,Editing,ChangeTracking,Sync"
+                                        }
+                  }
+        r = requests.post(url, json = update)
+        status = json.loads (r.text)
+        print(status)
+        return status#status['capabilities']
+        
         #url = service url
         #token = token as string
         #ensures that the service exists and has been set up correctly
         #returns true or false
-    return True
+    #return True
 
-def AsyncRequest(url, token):
+#def AsyncRequest(url, token):
         #send request to first url
         
         #get status url
@@ -92,8 +104,9 @@ token = GetToken(base_url, 'REDW_Python', 'Benefit4u!')
 serverGens = [{'id': 0, 'minServerGen': 54927109, 'serverGen': 56891349}]
 ExtractChanges(base_url, token, serverGens)
 url = 'https://nps.maps.arcgis.com/sharing/generateToken'
-##payload  = {'username' : 'username',
-##				'password' : 'password',
+CheckService('https://services1.arcgis.com/fBc8EJBxQRMcHlei/arcgis/rest/admin/services/REDW_AGOL_PythonSyncTest_py/FeatureServer/updateDefinition', token)
+##payload  = {'username' : 'REDW_Python',
+##				'password' : 'Benefit4u!',
 ##				'referer' : 'www.arcgis.com'
 ##                                }
 ##
