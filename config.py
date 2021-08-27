@@ -1,6 +1,7 @@
 #Config file for AGOL/SDE sync tool
 
 #SQL settings
+SQL_hostname = 'inpredwgis2'
 SQL_username = 'REDW_Python'
 SQL_password = 'Benefit4u!123'
 

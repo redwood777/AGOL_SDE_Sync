@@ -124,20 +124,29 @@ def SdeObjectIdsToGlobalIds(connection, objectIds, fcName, registration_id):
     data = ReadSQLWithDebug(query, connection)
     second_list = data["GLOBALID"].tolist()
     
-    return first_list + list(set(second_list) - set(first_list)) 
+    return first_list + list(set(second_list) - set(first_list))
 
-def GetAdds(connection, registration_id, states):
-    #returns list of objects in adds table with state ids in states
+def GetGlobalIds(connection, fcName):
+    #returns list of global ids existing in featureclass
+    Debug('Getting SDE Global IDs...', 2)
 
-    Debug('Getting adds...', 1)
+    query = "SELECT GLOBALID FROM {}_evw".format(fcName)
+    globalIds = ReadSQLWithDebug(query, connection)
+
+    return globalIds.tolist()
+
+def GetChanges(connection, fcName, stateId):
+    #returns rows from versioned view with state id > state
+
+    Debug('Getting SDE changes...', 1)
 
     #get rows from adds table since lastState
-    query = "SELECT * FROM a{} WHERE SDE_STATE_ID IN ({})".format(registration_id, states)
+    query = "SELECT * FROM {}_evw WHERE SDE_STATE_ID > {}".format(fcName, stateId)
     adds = ReadSQLWithDebug(query, connection)
 
     if(len(adds.index) > 0):
         #reaquire SHAPE column as WKB
-        query = "SELECT SHAPE.STAsBinary() FROM a{} WHERE SDE_STATE_ID IN ({})".format(registration_id, states)
+        query = "SELECT SHAPE.STAsBinary() FROM {}_evw WHERE SDE_STATE_ID > {}".format(fcName, stateId)
         shape = ReadSQLWithDebug(query, connection)
         #print(shape['SHAPE'])
 
@@ -146,14 +155,34 @@ def GetAdds(connection, registration_id, states):
 
     return adds
 
-def GetDeletes(connection, registration_id, states):
-    #returns list of objects deleted from versioned table registered with registration id since lastState
+##def GetAdds(connection, registration_id, states):
+##    #returns list of objects in adds table with state ids in states
+##
+##    Debug('Getting adds...', 1)
+##
+##    #get rows from adds table since lastState
+##    query = "SELECT * FROM a{} WHERE SDE_STATE_ID IN ({})".format(registration_id, states)
+##    adds = ReadSQLWithDebug(query, connection)
+##
+##    if(len(adds.index) > 0):
+##        #reaquire SHAPE column as WKB
+##        query = "SELECT SHAPE.STAsBinary() FROM a{} WHERE SDE_STATE_ID IN ({})".format(registration_id, states)
+##        shape = ReadSQLWithDebug(query, connection)
+##        #print(shape['SHAPE'])
+##
+##        #replace shape column with text
+##        adds['SHAPE'] = shape.values
+##
+##    return adds
 
-    Debug('Getting deletes...', 1)
-    
-    query = "SELECT SDE_DELETES_ROW_ID, DELETED_AT FROM D{} WHERE DELETED_AT IN ({})".format(registration_id, states)
-    data = ReadSQLWithDebug(query, connection)
-    return data #["SDE_DELETES_ROW_ID"].tolist()
+##def GetDeletes(connection, registration_id, states):
+##    #returns list of objects deleted from versioned table registered with registration id since lastState
+##
+##    Debug('Getting deletes...', 1)
+##    
+##    query = "SELECT SDE_DELETES_ROW_ID, DELETED_AT FROM D{} WHERE DELETED_AT IN ({})".format(registration_id, states)
+##    data = ReadSQLWithDebug(query, connection)
+##    return data #["SDE_DELETES_ROW_ID"].tolist()
 
 def WkbToEsri(WKB):
     #converts well known binary to esri json
@@ -371,7 +400,7 @@ def Delete(connection, fcName, GUID):
     return EditTable(query, connection, 1)
     
 
-def ExtractChanges(connection, registration_id, fcName, lastState):
+def ExtractChanges(connection, registration_id, fcName, lastGlobalIds, lastState):
     #returns object lists for adds and updates, and list of objects deleted
     print('Extracting changes from {}...\n'.format(fcName))
 
@@ -383,40 +412,61 @@ def ExtractChanges(connection, registration_id, fcName, lastState):
         return {'adds': [], 'updates':[], 'deleteIds': []}
     
     #get adds and deletes from delta tables
-    adds = GetAdds(connection, registration_id, states)
-    deletes = GetDeletes(connection, registration_id, states)
+##  adds = GetAdds(connection, registration_id, states)
+##  deletes = GetDeletes(connection, registration_id, states)
+    
+    #get global ids and changes from versioned view
+    globalIds = GetGlobalIds(connection, fcName)
+    changes = GetChanges(connection, fcName, lastState)
 
-    #find updates from adds and deletes:
-    Debug('Processing updates...', 1)
+    #extrapolate updates and deletes
+    Debug('Processing changes...', 1)
+
+    #missing ids = deletes
+    deleteIds = list(set(lastGlobalIds).difference(globalIds))
+
+    #get global ids from changes
+    changeGlobalIds = set(changes['GlobalID'].tolist())
+
+    #new ids = adds
+    addIds = list(changeGlobalIds.difference(lastGlobalIds))
+
+    #get rows containing adds
+    addRows = changes['GlobalID'].isin(addIds)
+
+    #split changes into adds and updates
+    adds = changes[addRows]
+    updates = changes[~addRows]
+    
     
     #find updates, remove them from adds and deletes table, and add them to updates table
     #in SQL, updates are stored as an add and a delete occuring at the same SDE_STATE
     
     #create lists to store rows containing updates in adds and deletes table
-    updateAddRows = []
-    updateDeleteRows = []
-    
-    #find update rows
-    for i in adds.index:
-        for j in deletes.index:
-            #check if both object id's and SDE_STATE_ID's match
-            if (adds["OBJECTID"][i] == deletes["SDE_DELETES_ROW_ID"][j] and adds["SDE_STATE_ID"][i] == deletes["DELETED_AT"][j]):
-                updateAddRows.append(i)
-                updateDeleteRows.append(j)
-
-    #drop state id and object id (these are specific to SDE and no longer needed)
-    adds = adds.drop(labels=["SDE_STATE_ID", "OBJECTID"], axis='columns')
+##    updateAddRows = []
+##    updateDeleteRows = []
+##    
+##    #find update rows
+##    for i in adds.index:
+##        for j in deletes.index:
+##            #check if both object id's and SDE_STATE_ID's match
+##            if (adds["OBJECTID"][i] == deletes["SDE_DELETES_ROW_ID"][j] and adds["SDE_STATE_ID"][i] == deletes["DELETED_AT"][j]):
+##                updateAddRows.append(i)
+##                updateDeleteRows.append(j)
+##
+##    #drop state id and object id (these are specific to SDE and no longer needed)
+##    adds = adds.drop(labels=["SDE_STATE_ID", "OBJECTID"], axis='columns')
 
     #create new dataframes
-    updates = adds.iloc[updateAddRows]
-    adds = adds.drop(labels=updateAddRows)
-    deletes = deletes.drop(labels=updateDeleteRows)
+##    updates = adds.iloc[updateAddRows]
+##    adds = adds.drop(labels=updateAddRows)
+##    deletes = deletes.drop(labels=updateDeleteRows)
     
     #get global ids for deletes
-    deleteGUIDs = SdeObjectIdsToGlobalIds(connection, deletes["SDE_DELETES_ROW_ID"].tolist(), fcName, registration_id)
+    #deleteGUIDs = SdeObjectIdsToGlobalIds(connection, deletes["SDE_DELETES_ROW_ID"].tolist(), fcName, registration_id)
 
     #print("ADDS:", adds, "\nUPDATES:",updates,"\nDELETES:",deleteGUIDs)
-    deltas = SqlDeltasToJson(adds, updates, deleteGUIDs)
+    deltas = SqlDeltasToJson(adds, updates, deleteIds)
     
     return deltas
 

@@ -6,7 +6,7 @@
     
 import json
 import copy
-import sde_functions as sde
+#import sde_functions as sde
 #import agol_functions as agol
 import ui_functions as ui
 
@@ -53,9 +53,9 @@ def WriteSyncs(syncs):
 def ExtractChanges(service, serverGen, cfg):
     #wrapper for SQL/AGOL extract changes functions
     if(service['type'] == 'SDE'):
-        connection = sde.Connect(service['hostname'], service['database'], cfg.SQL_username, cfg.SQL_password)
+        connection = sde.Connect(cfg.SQL_hostname, service['database'], cfg.SQL_username, cfg.SQL_password)
         registration_id = sde.GetRegistrationId(connection, service['featureclass'])
-        deltas = sde.ExtractChanges(connection, registration_id, service['featureclass'], serverGen)
+        deltas = sde.ExtractChanges(connection, registration_id, service['featureclass'], service['globalIds'], serverGen)
         connection.close()
         
         return deltas
@@ -67,11 +67,20 @@ def ApplyEdits(service, cfg, deltas):
     #wrapper for SQL/AGOL extract changes functions
     
     if(service['type'] == 'SDE'):
-        connection = sde.Connect(service['hostname'], service['database'], cfg.SQL_username, cfg.SQL_password)
+        #connect
+        connection = sde.Connect(cfg.SQL_hostname, service['database'], cfg.SQL_username, cfg.SQL_password)
+        
+        #get registration id and extract changes
         registration_id = sde.GetRegistrationId(connection, service['featureclass'])
         sde.ApplyEdits(connection, registration_id, service['featureclass'], deltas)
+
+        #commit changes
         connection.commit()
-        state_id = sde.GetCurrentStateId(connection) 
+
+        #get new state id
+        state_id = sde.GetCurrentStateId(connection)
+
+        #close connection
         connection.close()
         return state_id
 
@@ -83,20 +92,25 @@ def main():
     #load syncs
     syncs = LoadSyncs()
 
+    if(syncs == None):
+        exit()
+
     #prompt user to select sync
     menu = [s['name'] for s in syncs]
     menu.append('Create new')
     choice = ui.Options('Select sync:', menu, allow_filter=True)
 
     if (choice == (len(menu))):
-        #TODO: make create new builder
-        print(None)
+        sync = ui.CreateNewSync(cfg)
+        syncs.append(sync)
+        WriteSyncs(syncs)
+        exit()
     else:
         sync = syncs[choice - 1]
 
     #Extract changes from both services
-    first_deltas = ExtractChanges(sync['first'], sync['first_servergen'], cfg)
-    second_deltas = ExtractChanges(sync['second'], sync['second_servergen'], cfg)
+    first_deltas = ExtractChanges(sync['first'], sync['first']['servergen'], cfg)
+    second_deltas = ExtractChanges(sync['second'], sync['second']['servergen'], cfg)
     
     #reconcile changes
     first_deltas, second_deltas = ui.ResolveConflicts(first_deltas, second_deltas, 'PY_2', 'PY_3')
@@ -106,35 +120,13 @@ def main():
     first_servergen = ApplyEdits(sync['first'], cfg, second_deltas)
 
     #Update servergens
-    syncs[choice - 1]['first_servergen'] = first_servergen
-    syncs[choice - 1]['second_servergen'] = second_servergen
+    syncs[choice - 1]['first']['servergen'] = first_servergen
+    syncs[choice - 1]['second']['servergen'] = second_servergen
+    
     WriteSyncs(syncs)
 
     print('Done!')
     
-    #get database, FC name
-##    if(cfg):
-##        menu = [d['name'] for d in cfg.SQL_databases]
-##        menu.append('Create new')
-##        choice = Options('Select database:', menu)
-    
-    #check if FC has been set up before (cached in SQL table?)
-        #if so, get last serverGen/SDE_STATE_ID
-        #if not, ask for service URL and cache
-    
-    #connect to database
-    #UID = 'REDW_Python'
-    #PWD = 'Benefit4u!123'
-    
-    #cnxn = sql.Connect(server, database, UID, PWD)
-    #check if FC has been registered as versioned
-    #check that service has been set up correctly
-    #extract changes from SQL
-    #extract changes from AGOL
-    #reconcile
-    #apply & commit changes to SQL
-    #apply changes to AGOL
-    #cache new serverGen/SDE_STATE_ID
     
     
 

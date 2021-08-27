@@ -1,17 +1,15 @@
 [
     {
-        "first_servergen": 80, 
         "second": {
-            "hostname": "inpredwgis2", 
             "type": "SDE", 
+            "servergen": 80, 
             "featureclass": "AGOL_TEST_PY_3", 
             "database": "REDWTest"
         }, 
-        "second_servergen": 80, 
         "name": "AGOL_TEST_PY_2/AGOL_TEST_PY3", 
         "first": {
-            "hostname": "inpredwgis2", 
             "type": "SDE", 
+            "servergen": 80, 
             "featureclass": "AGOL_TEST_PY_2", 
             "database": "REDWTest"
         }
