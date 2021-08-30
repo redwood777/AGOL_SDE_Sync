@@ -1,21 +1,27 @@
 import json
-#import pandas as pd
 import requests
 import ui_functions as ui
 import time
 
 def GetToken(url, username, password):
     #returns token for use with further requests
+
+    ui.Debug('Getting AGOL token...\n', 2)
     
     url = url + '/sharing/generateToken'
     payload  = {'username' : username,'password' : password,'referer' : 'www.arcgis.com','f' : 'json' }
 
     r = requests.post(url, data=payload)
 
-    token =json.loads(r.content)
-    aToken = token['token']
+    response = json.loads(r.content)
+    
+    try:
+        token = response['token']
+    except:
+        print('No token returned!')
+        print(response)
 
-    return aToken
+    return token
 
 
 def CreateUrl(base_url, params):
@@ -26,43 +32,43 @@ def CreateUrl(base_url, params):
         
     base_url += 'f=json'
     
-    print(base_url)
+    ui.Debug('URL: {}'.format(base_url), 3)
+    
     return base_url
                 
                 
 
 def ApiCall(url, data, token): #, serverGen):
-    #extracts changes since specified serverGen and returns them as an object
-    #url = service url
-    #token = token as string
+    #performs async rest api call 
+
+    ui.Debug('Sending API request...\n', 2)
 
     url = CreateUrl(url, data)
-
     response = requests.post(url)
 
-    print(response.content)
-
-    url = json.loads(response.content)["statusUrl"]
-    data  = {'token': token,
-             'f': 'json'}
-
+    url = json.loads(response.content)["statusUrl"]  
+    data  = {'token': token}
     url = CreateUrl(url, data)
 
     while True:
         time.sleep(3)
+
+        ui.Debug('Checking status URL...', 2)
         response = requests.post(url)
         content = json.loads(response.content)
+        ui.Debug('Status: {}'.format(content['status']), 2)
+        
         if (content["status"] != 'Pending'):
             break
 
-    
     if content['status'] == 'Failed':
         print(content['error'])
         return
 
     else:
+        ui.Debug('\nGetting result...\n', 2)
+        
         url = content['resultUrl']
-
         url = CreateUrl(url, data)
 
         response = requests.post(url)
@@ -76,6 +82,8 @@ def CheckService(base_url, layer, token): #, serverGen):
     #returns False if service is missing capabilities
     #returns True, serverGen if service is set up correctly
 
+    ui.Debug('Checking AGOL service capabilities...\n', 1)
+
     data  = {'token': token,
             'returnUpdates': True}
 
@@ -85,51 +93,47 @@ def CheckService(base_url, layer, token): #, serverGen):
 
     if(response.status_code !=  200):
         print('HTTP Error code: {}'.format(response.status_code))
-        return
+        return False, None
 
     try: 
         content = json.loads(response.content)
-    except:
-        print('Error parsing response!')
-        return
-
-    try:
-        serverGens = content["changeTrackingInfo"]['layerServerGens']
         capabilities = content['capabilities']
     except:
-        print('Response missing servergens or capabilities!')
-        return
+        print('Error parsing response!')
+        return False, None
 
+    capabilities = capabilities.lower()
+    required = ['update', 'changetracking', 'create', 'delete', 'update', 'editing']
+
+    for req in required:
+        if not req in capabilities:
+            print('Missing capability: {}'.format(req))
+            return False, None
+
+    serverGens = content["changeTrackingInfo"]['layerServerGens']
     serverGen = [g for g in serverGens if g['id'] == layer]
 
     try:
         serverGen = serverGen[0]
     except:
         print('Layer {} does not exist'.format(layer))
-        return
+        return False, None
 
-    capabilities = capabilities.lower()
+    return True, serverGen
 
-    required = ['update', 'changetracking', 'create', 'delete', 'update', 'editing']
 
-    capable = True
-
-    for req in required:
-        if not req in capabilities:
-            print('Missing capability: {}'.format(req))
-            capable = False
-
-    return capable, serverGen
 
 def ExtractChanges(url, layer, serverGen, token):
     #extracts changes since specified serverGen and returns them as an object
+
+    ui.Debug('Extracting changes from AGOL...\n', 1)
 
     data  = {'token': token,
             'layers': [layer],
             'returnInserts': 'true',
             'returnUpdates': 'true',
             'returnDeletes': 'true',
-            'layerServerGens':  serverGens,
+            'layerServerGens': json.dumps([serverGen]),
             'dataFormat': 'json'}
 
                
@@ -140,9 +144,9 @@ def ExtractChanges(url, layer, serverGen, token):
     return response['edits'][0]['features']
 
 def ApplyEdits(url, layer, token, deltas):
-    #applies edits to service, returns new serverGen/success code
+    #applies edits to service, returns success boolean
 
-    print(deltas)
+    ui.Debug('Applying edits to AGOL...\n', 1)
     
     deltas['id'] = layer
 
@@ -161,6 +165,8 @@ def ApplyEdits(url, layer, token, deltas):
     if(response.status_code != 200):
         print('HTTP Error code: {}'.format(response.status_code))
         return False
+
+    print(response.content)
 
     try:
         response = json.loads(response.content)[0]
@@ -223,13 +229,13 @@ deltas = {
     ]
 }
 
-token = GetToken(base_url, 'REDW_Python', 'Benefit4u!')
+#token = GetToken('https://nps.maps.arcgis.com', 'REDW_Python', 'Benefit4u!')
 #print(CheckService(base_url, 0, token))
 #serverGens = GetServerGen(base_url, token)
-#serverGens = [{'id': 0, 'minServerGen': 54927109, 'serverGen': 56891349}]
+#serverGens = [{'serverGen': 57940165, 'id': 0, 'minServerGen': 57939871}]
 #print(serverGens)
 #deltas = ExtractChanges(base_url, 0, serverGens, token)
 #deltas['updates'] = deltas['adds']
 #deltas['adds'] = []
 #print(json.dumps(deltas, indent=4))
-print(ApplyEdits(base_url, 0, token, deltas))
+#print(ApplyEdits(base_url, 0, token, deltas))

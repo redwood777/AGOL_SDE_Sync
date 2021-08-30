@@ -1,21 +1,22 @@
 [
     {
         "second": {
-            "servergen": 80, 
             "type": "SDE", 
+            "servergen": 80, 
             "featureclass": "AGOL_TEST_PY_3", 
             "database": "REDWTest"
         }, 
         "name": "AGOL_TEST_PY_2/AGOL_TEST_PY3", 
         "first": {
-            "servergen": 80, 
             "type": "SDE", 
+            "servergen": 80, 
             "featureclass": "AGOL_TEST_PY_2", 
             "database": "REDWTest"
         }
     }, 
     {
         "second": {
+            "type": "SDE", 
             "servergen": {
                 "globalIds": [
                     "9540491D-D556-447E-8442-12084D1D3260", 
@@ -28,12 +29,12 @@
                 ], 
                 "stateId": 101
             }, 
-            "type": "SDE", 
             "featureclass": "AGOL_TEST_PY_3", 
             "database": "REDWTest"
         }, 
         "name": "Test1", 
         "first": {
+            "type": "SDE", 
             "servergen": {
                 "globalIds": [
                     "9540491D-D556-447E-8442-12084D1D3260", 
@@ -46,9 +47,35 @@
                 ], 
                 "stateId": 101
             }, 
-            "type": "SDE", 
             "featureclass": "AGOL_TEST_PY_2", 
             "database": "REDWTest"
+        }
+    }, 
+    {
+        "second": {
+            "type": "SDE", 
+            "servergen": {
+                "globalIds": [
+                    "9540491D-D556-447E-8442-12084D1D3260", 
+                    "4943D633-F0B2-4BED-83CB-E63764352BB5", 
+                    "8C7908F6-69F6-4F22-A6BA-3926B10681C2", 
+                    "0600494B-D048-4F1C-8063-0B1A5EDD7C0F", 
+                    "E80FAE6C-6EF5-4E02-AFCD-A24C48438A76", 
+                    "0E359FEC-497D-452C-BC95-C92853B8BC8A", 
+                    "18DD7642-680F-4559-A4E2-3CC0F82A102B", 
+                    "4F09724A-C3C5-4940-B239-6E7964441E6C"
+                ], 
+                "stateId": 103
+            }, 
+            "featureclass": "AGOL_TEST_PY_2", 
+            "database": "REDWTest"
+        }, 
+        "name": "AgolOne", 
+        "first": {
+            "type": "AGOL", 
+            "servergen": null, 
+            "serviceUrl": "https://services1.arcgis.com/fBc8EJBxQRMcHlei/arcgis/rest/services/REDW_AGOL_PythonSyncTest_py/FeatureServer", 
+            "layerId": 0
         }
     }
 ]

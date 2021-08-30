@@ -88,12 +88,13 @@ def CreateNewSync(cfg):
                            'database': database}
             else:
                 continue
+            
         else:
             #for AGOL services
 
             #get service details
             url = raw_input('Enter service url:')
-            layerId = raw_input('Enter service layer id:')
+            layerId = int(raw_input('Enter service layer id:'))
 
             #check that service is set up correctly
             token = agol.GetToken(cfg.AGOL_url, cfg.AGOL_username, cfg.AGOL_password)
@@ -102,11 +103,10 @@ def CreateNewSync(cfg):
             if not ready:
                 continue
 
-            service = {'serviceUrl': url,
+            service = {'type': 'AGOL',
+                       'serviceUrl': url,
                        'layerId': layerId,
-                       'serverGen': serverGen}
-
-                
+                       'servergen': serverGen}
 
         sync[numbers[i]] = service
         i = i + 1
