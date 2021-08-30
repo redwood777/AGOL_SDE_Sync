@@ -90,7 +90,21 @@ def CreateNewSync(cfg):
                 continue
         else:
             #for AGOL services
-            print('nothing yet')
+
+            #get service details
+            url = raw_input('Enter service url:')
+            layerId = raw_input('Enter service layer id:')
+
+            #check that service is set up correctly
+            token = agol.GetToken(cfg.AGOL_url, cfg.AGOL_username, cfg.AGOL_password)
+            ready, serverGen = agol.CheckService(url, layerId, token)
+
+            if not ready:
+                continue
+
+            service = {'serviceUrl': url,
+                       'layerId': layerId,
+                       'serverGen': serverGen}
 
                 
 

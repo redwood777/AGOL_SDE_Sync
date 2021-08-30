@@ -4,27 +4,19 @@ import requests
 import ui_functions as ui
 import time
 
-def GetToken(base_url, username, password):
-        #base_url: something like "https://nps.maps.arcgis.com"
-        #uses AGOL rest API to aquire token with username and password
-        url = 'https://nps.maps.arcgis.com/sharing/generateToken'
-        payload  = {'username' : username,'password' : password,'referer' : 'www.arcgis.com','f' : 'json' }
-        
-        r = requests.post(url, data=payload)
-        #print(r.content)
-        
-        token =json.loads(r.content)
-        aToken = token['token']
-        #print(aToken)
-	
-        return aToken
+def GetToken(url, username, password):
+    #returns token for use with further requests
+    
+    url = 'https://nps.maps.arcgis.com/sharing/generateToken'
+    payload  = {'username' : username,'password' : password,'referer' : 'www.arcgis.com','f' : 'json' }
 
-def CheckService(url, token):
-        #url = service url
-        #token = token as string
-        #ensures that the service exists and has been set up correctly
-        #returns true or false
-    return True
+    r = requests.post(url, data=payload)
+
+    token =json.loads(r.content)
+    aToken = token['token']
+
+    return aToken
+
 
 def CreateUrl(base_url, params):
     base_url += '?'
@@ -57,94 +49,187 @@ def ApiCall(url, data, token): #, serverGen):
     url = CreateUrl(url, data)
 
     while True:
-            time.sleep(3)
-            response = requests.post(url)
-            content = json.loads(response.content)
-            if (content["status"] != 'Pending'):
-                    break
+        time.sleep(3)
+        response = requests.post(url)
+        content = json.loads(response.content)
+        if (content["status"] != 'Pending'):
+            break
 
     
     if content['status'] == 'Failed':
-            print(content['error'])
-            return
+        print(content['error'])
+        return
 
     else:
-            url = content['resultUrl']
+        url = content['resultUrl']
 
-            url = CreateUrl(url, data)
+        url = CreateUrl(url, data)
 
-            print(url)
-            response = requests.post(url)
-            content = json.loads(response.content)
-            #print(json.dumps(content, indent=4))
+        response = requests.post(url)
+        content = json.loads(response.content)
+        #print(json.dumps(content, indent=4))
 
     return content
 
+def CheckService(base_url, layer, token): #, serverGen):
+    #returns None if issue with service
+    #returns False if service is missing capabilities
+    #returns True, serverGen if service is set up correctly
 
-def GetServerGen(base_url, token): #, serverGen):
-    #extracts changes since specified serverGen and returns them as an object
-    #url = service url
-    #token = token as string
     data  = {'token': token,
-            'returnUpdates': True,}
+            'returnUpdates': True}
 
-    #headers = {'Authentication': 'token {}'.format(token)}
-               
-    url = base_url
-
-    url = CreateUrl(url, data)
+    url = CreateUrl(base_url, data)
     
     response = requests.post(url)
-    #print(url)
-    content = json.loads(response.content)
-    #returns pandas data frame
-    return content["changeTrackingInfo"]['layerServerGens']
 
-def ExtractChanges(base_url, serverGens, token): #, serverGen):
+    if(response.status_code !=  200):
+        print('HTTP Error code: {}'.format(response.status_code))
+        return
+
+    try: 
+        content = json.loads(response.content)
+    except:
+        print('Error parsing response!')
+        return
+
+    try:
+        serverGens = content["changeTrackingInfo"]['layerServerGens']
+        capabilities = content['capabilities']
+    except:
+        print('Response missing servergens or capabilities!')
+        return
+
+    serverGen = [g for g in serverGens if g['id'] == layer]
+
+    try:
+        serverGen = serverGen[0]
+    except:
+        print('Layer {} does not exist'.format(layer))
+        return
+
+    capabilities = capabilities.lower()
+
+    required = ['update', 'changetracking', 'create', 'delete', 'update', 'editing']
+
+    capable = True
+
+    for req in required:
+        if not req in capabilities:
+            print('Missing capability: {}'.format(req))
+            capable = False
+
+    return capable, serverGen
+
+def ExtractChanges(url, layer, serverGen, token):
     #extracts changes since specified serverGen and returns them as an object
-        #url = service url
-        #token = token as string
-        data  = {'token': token,
-                'layers': [0],
-                'returnInserts': 'true',
-                'returnUpdates': 'true',
-                'returnDeletes': 'true',
-                'layerServerGens':  serverGens,
-                'dataFormat': 'json'}
 
-        #headers = {'Authentication': 'token {}'.format(token)}
-                   
-        url = base_url + '/extractChanges'
-        print(url)
-	#print(url)
-        response = ApiCall(url, data, token)    
+    data  = {'token': token,
+            'layers': [layer],
+            'returnInserts': 'true',
+            'returnUpdates': 'true',
+            'returnDeletes': 'true',
+            'layerServerGens':  serverGens,
+            'dataFormat': 'json'}
 
-        return response['edits'][0]['features']
+               
+    url = base_url + '/extractChanges'
+    
+    response = ApiCall(url, data, token)
 
-#url = 'https://services1.arcgis.com/fBc8EJBxQRMcHlei/ArcGIS/rest/services/REDW_AGOL_PythonSyncTest_py/FeatureServer/jobs/74955bf0-ea4a-44a6-ad3c-0eae21a63642'
+    return response['edits'][0]['features']
 
-def ApplyEdits(url, token, deltas):
+def ApplyEdits(url, layer, token, deltas):
     #applies edits to service, returns new serverGen/success code
 
-    deltas = [deltas.update({'id': 0})]
+    print(deltas)
+    
+    deltas['id'] = layer
+
+    #print(json.dumps(deltas, indent=4))
 
     data = {'token': token,
+            'edits': [deltas],
             'useGlobalIds': 'true'}
 
     url += '/applyEdits'
 
     url = CreateUrl(url, data)
 
-    response = requests.post(url, json={'edits': deltas})
-    print(response.content)
-    return None
+    response = requests.post(url) #, json={'edits': deltas})
+
+    if(response.status_code != 200):
+        print('HTTP Error code: {}'.format(response.status_code))
+        return False
+
+    try:
+        response = json.loads(response.content)[0]
+    except:
+        print('Invalid response')
+        return False
+
+    success = True
+
+    for results in ['addResults', 'updateResults', 'deleteResults']:
+        if (results in response.keys()):
+            for result in response[results]:
+                if not result['success']:
+                    print(result['error'])
+                    success = False
+
+    if(not success):
+        print('Error: {}'.format(response[0]['error']))
+        return False
+    
+    return True
 
 base_url = 'https://services1.arcgis.com/fBc8EJBxQRMcHlei/arcgis/rest/services/REDW_AGOL_PythonSyncTest_py/FeatureServer'
 
+deltas = {
+    "deleteIds": [], 
+    "adds": [], 
+    "updates": [
+        {
+            "geometry": {
+                "rings": [
+                    [
+                        [
+                            400256.578804272, 
+                            4640459.73021187
+                        ], 
+                        [
+                            400343.341193316, 
+                            4640363.63900759
+                        ], 
+                        [
+                            400200.17907481, 
+                            4640372.7397159
+                        ], 
+                        [
+                            400256.578804272, 
+                            4640459.73021187
+                        ]
+                    ]
+                ]
+            }, 
+            "attributes": {
+                "CreateUser": "REDW_Python", 
+                "GlobalID": "A6F21C34-7B36-48ED-9F16-EDB58DB3CE5C", 
+                "UTM_Zone": "10",
+                "Species_ID": 'BEOBOO',
+                "Taxonomy": 'MOBETTAS'
+            }
+        }
+    ]
+}
 
 token = GetToken(base_url, 'REDW_Python', 'Benefit4u!')
+#print(CheckService(base_url, 0, token))
 #serverGens = GetServerGen(base_url, token)
-serverGens = [{'id': 0, 'minServerGen': 54927109, 'serverGen': 56891349}]
+#serverGens = [{'id': 0, 'minServerGen': 54927109, 'serverGen': 56891349}]
 #print(serverGens)
-deltas = ExtractChanges(base_url, serverGens, token)
-ApplyEdits(base_url, token, deltas)
+#deltas = ExtractChanges(base_url, 0, serverGens, token)
+#deltas['updates'] = deltas['adds']
+#deltas['adds'] = []
+#print(json.dumps(deltas, indent=4))
+print(ApplyEdits(base_url, 0, token, deltas))

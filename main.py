@@ -7,7 +7,7 @@
 import json
 import copy
 #import sde_functions as sde
-#import agol_functions as agol
+import agol_functions as agol
 import ui_functions as ui
 
 def LoadConfig():
@@ -57,11 +57,17 @@ def ExtractChanges(service, serverGen, cfg):
         registration_id = sde.GetRegistrationId(connection, service['featureclass'])
         deltas = sde.ExtractChanges(connection, registration_id, service['featureclass'], service['globalIds'], serverGen)
         connection.close()
-        
-        return deltas
     
     elif(service['type'] == 'AGOL'):
-        return #TODO: put stuff here      
+        token = agol.GetToken(cfg.AGOL_url, cfg.AGOL_username, cfg.AGOL_password)
+        ready, newServerGen = agol.CheckService(service['serviceUrl'], service['layerId'], token)
+
+        if not ready:
+            return
+
+        deltas = agol.ExtractChanges(service['serviceUrl'], service['layerId'], serverGen, token)
+
+    return deltas
 
 def ApplyEdits(service, cfg, deltas):
     #wrapper for SQL/AGOL extract changes functions
@@ -83,6 +89,21 @@ def ApplyEdits(service, cfg, deltas):
         #close connection
         connection.close()
         return state_id
+
+    elif(service['type'] == 'AGOL'):
+        token = agol.GetToken(cfg.AGOL_url, cfg.AGOL_username, cfg.AGOL_password)
+        ready = agol.CheckService(service['serviceUrl'], service['layerId'], token)
+
+        if not ready:
+            return
+
+        if not agol.ApplyEdits(service['serviceUrl'], service['layerId'], token, deltas):
+            return
+
+        ready, newServerGen = agol.CheckService(service['serviceUrl'], service['layerId'], token)
+
+        return newServerGen
+        
 
 def main():
     #load config
