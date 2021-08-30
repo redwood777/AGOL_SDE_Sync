@@ -6,7 +6,7 @@
     
 import json
 import copy
-#import sde_functions as sde
+import sde_functions as sde
 import agol_functions as agol
 import ui_functions as ui
 
@@ -55,7 +55,7 @@ def ExtractChanges(service, serverGen, cfg):
     if(service['type'] == 'SDE'):
         connection = sde.Connect(cfg.SQL_hostname, service['database'], cfg.SQL_username, cfg.SQL_password)
         registration_id = sde.GetRegistrationId(connection, service['featureclass'])
-        deltas = sde.ExtractChanges(connection, registration_id, service['featureclass'], service['globalIds'], serverGen)
+        deltas = sde.ExtractChanges(connection, registration_id, service['featureclass'], serverGen['globalIds'], serverGen['stateId'])
         connection.close()
     
     elif(service['type'] == 'AGOL'):
@@ -83,12 +83,14 @@ def ApplyEdits(service, cfg, deltas):
         #commit changes
         connection.commit()
 
-        #get new state id
+        #get new state id and global ids
         state_id = sde.GetCurrentStateId(connection)
+        globalIds = sde.GetGlobalIds(connection, service['featureclass'])
 
         #close connection
         connection.close()
-        return state_id
+
+        return {'stateId': state_id, 'globalIds': globalIds}
 
     elif(service['type'] == 'AGOL'):
         token = agol.GetToken(cfg.AGOL_url, cfg.AGOL_username, cfg.AGOL_password)
@@ -125,6 +127,7 @@ def main():
         sync = ui.CreateNewSync(cfg)
         syncs.append(sync)
         WriteSyncs(syncs)
+        print('Sync created! Exiting.')
         exit()
     else:
         sync = syncs[choice - 1]

@@ -7,7 +7,7 @@ import time
 def GetToken(url, username, password):
     #returns token for use with further requests
     
-    url = 'https://nps.maps.arcgis.com/sharing/generateToken'
+    url = url + '/sharing/generateToken'
     payload  = {'username' : username,'password' : password,'referer' : 'www.arcgis.com','f' : 'json' }
 
     r = requests.post(url, data=payload)

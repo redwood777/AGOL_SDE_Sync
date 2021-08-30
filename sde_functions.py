@@ -96,10 +96,14 @@ def RemoveNulls(dict_in):
     return dict_in
 
 def AddQuotes(dict_in):
-    #adds quote marks to non-float values
-    for k in dict_in.keys():
+    #adds quote marks to non-float values, turns all values into strings, escapes apostrophes
+    for k in dict_in.keys():           
         if not isinstance(dict_in[k], float):
+            dict_in[k] = str(dict_in[k]).replace("'", "''")
             dict_in[k] = "'{}'".format(dict_in[k])
+        else:
+            dict_in[k] = str(dict_in[k])
+        
 
     return dict_in
 
@@ -133,7 +137,7 @@ def GetGlobalIds(connection, fcName):
     query = "SELECT GLOBALID FROM {}_evw".format(fcName)
     globalIds = ReadSQLWithDebug(query, connection)
 
-    return globalIds.tolist()
+    return globalIds['GLOBALID'].tolist()
 
 def GetChanges(connection, fcName, stateId):
     #returns rows from versioned view with state id > state
@@ -430,6 +434,12 @@ def ExtractChanges(connection, registration_id, fcName, lastGlobalIds, lastState
 
     #new ids = adds
     addIds = list(changeGlobalIds.difference(lastGlobalIds))
+
+    print('lastIds', lastGlobalIds)
+    print('ids', globalIds)
+    print('changed', changeGlobalIds)
+    print('deletes', deleteIds)
+    print('added', addIds)
 
     #get rows containing adds
     addRows = changes['GlobalID'].isin(addIds)

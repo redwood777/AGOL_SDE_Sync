@@ -1,5 +1,6 @@
 import json
-#import sde_functions as sde
+import sde_functions as sde
+import agol_functions as agol
 
 def GetGlobalIds(dict_in):
     #pulls global ids from adds or updates dictionary, returns as set
@@ -81,8 +82,7 @@ def CreateNewSync(cfg):
                     print('Featureclass has no global ids!')
                     continue
 
-                service = {'servergen': stateId,
-                           'globalIds': globalIds,
+                service = {'servergen': {'stateId': stateId, 'globalIds': globalIds},
                            'type': 'SDE',
                            'featureclass': fcName,
                            'database': database}
