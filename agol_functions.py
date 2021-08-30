@@ -1,114 +1,150 @@
 import json
 #import pandas as pd
 import requests
-#hello leo
+import ui_functions as ui
+import time
 
-#INTSTALL THIS: https://www.python.org/downloads/release/python-2718/
-#use pip to install requests
-
-#https://developers.arcgis.com/rest/
-#https://developers.arcgis.com/rest/services-reference/enterprise/extract-changes-feature-service-.htm
-#https://developers.arcgis.com/rest/services-reference/enterprise/apply-edits-feature-service-.htm
-
-def GetURL(base_url, dictURL):
-        base_url += '?'
-        for k,v in dictURL.items():
-                base_url += '{}={}&'.format(k,v)
-        base_url += 'f=json'
-        print(base_url)
-        return base_url
-        
 def GetToken(base_url, username, password):
         #base_url: something like "https://nps.maps.arcgis.com"
         #uses AGOL rest API to aquire token with username and password
-	url = 'https://nps.maps.arcgis.com/sharing/generateToken'
-	payload  = {'username' : username,
-				'password' : password,
-				'referer' : 'www.arcgis.com',
-				'f' : 'json'
-                                }
-
-	r = requests.post(url, data=payload)
-
-	token =json.loads (r.text)
-
-	aToken = token['token']
-
-	print(aToken)
-	#returns token as a string
-	return aToken
+        url = 'https://nps.maps.arcgis.com/sharing/generateToken'
+        payload  = {'username' : username,'password' : password,'referer' : 'www.arcgis.com','f' : 'json' }
+        
+        r = requests.post(url, data=payload)
+        #print(r.content)
+        
+        token =json.loads(r.content)
+        aToken = token['token']
+        #print(aToken)
+	
+        return aToken
 
 def CheckService(url, token):
-        update = {"f" : "json",
-                  "token" : token,
-                  "asynch" : True,
-                  "updateDefinition" : {"capabilities" : "Create,Delete,Query,Update,Editing,ChangeTracking,Sync"
-                                        }
-                  }
-        r = requests.post(url, json = update)
-        status = json.loads (r.text)
-        print(status)
-        return status#status['capabilities']
-        
         #url = service url
         #token = token as string
         #ensures that the service exists and has been set up correctly
         #returns true or false
-    #return True
+    return True
 
-#def AsyncRequest(url, token):
-        #send request to first url
+def CreateUrl(base_url, params):
+    base_url += '?'
+    
+    for k,v in params.items():
+        base_url += '{}={}&'.format(k,v)
         
-        #get status url
+    base_url += 'f=json'
+    
+    print(base_url)
+    return base_url
+                
+                
 
-        #wait for status url to stop being 'Pending'
+def ApiCall(url, data, token): #, serverGen):
+    #extracts changes since specified serverGen and returns them as an object
+    #url = service url
+    #token = token as string
 
-        #if status = 'error'
-        #throw error
+    url = CreateUrl(url, data)
 
-        #otherwise get result url
+    response = requests.post(url)
 
-        #send request to result url, return result
-        
+    print(response.content)
 
-def ExtractChanges(base_url, token, serverGens):
+    url = json.loads(response.content)["statusUrl"]
+    data  = {'token': token,
+             'f': 'json'}
+
+    url = CreateUrl(url, data)
+
+    while True:
+            time.sleep(3)
+            response = requests.post(url)
+            content = json.loads(response.content)
+            if (content["status"] != 'Pending'):
+                    break
+
+    
+    if content['status'] == 'Failed':
+            print(content['error'])
+            return
+
+    else:
+            url = content['resultUrl']
+
+            url = CreateUrl(url, data)
+
+            print(url)
+            response = requests.post(url)
+            content = json.loads(response.content)
+            #print(json.dumps(content, indent=4))
+
+    return content
+
+
+def GetServerGen(base_url, token): #, serverGen):
+    #extracts changes since specified serverGen and returns them as an object
+    #url = service url
+    #token = token as string
+    data  = {'token': token,
+            'returnUpdates': True,}
+
+    #headers = {'Authentication': 'token {}'.format(token)}
+               
+    url = base_url
+
+    url = CreateUrl(url, data)
+    
+    response = requests.post(url)
+    #print(url)
+    content = json.loads(response.content)
+    #returns pandas data frame
+    return content["changeTrackingInfo"]['layerServerGens']
+
+def ExtractChanges(base_url, serverGens, token): #, serverGen):
     #extracts changes since specified serverGen and returns them as an object
         #url = service url
         #token = token as string
-        base_url += '/extractChanges'
-        dictURL = {'token' : token,
-                   'layers' : '0',
-                   'returnInserts' : True,
-                   'returnUpdates' : True,
-                   'returnDeletes' : True,
-                   'layerServerGens' : serverGens
-                   }
-        url = GetURL(base_url, dictURL)
+        data  = {'token': token,
+                'layers': [0],
+                'returnInserts': 'true',
+                'returnUpdates': 'true',
+                'returnDeletes': 'true',
+                'layerServerGens':  serverGens,
+                'dataFormat': 'json'}
 
-        data = requests.post(url)
+        #headers = {'Authentication': 'token {}'.format(token)}
+                   
+        url = base_url + '/extractChanges'
+        print(url)
 	#print(url)
-        print(data.content)
-        content = json.loads(data.content)
-        #returns pandas data fra
-        
+        response = ApiCall(url, data, token)    
+
+        return response['edits'][0]['features']
+
+#url = 'https://services1.arcgis.com/fBc8EJBxQRMcHlei/ArcGIS/rest/services/REDW_AGOL_PythonSyncTest_py/FeatureServer/jobs/74955bf0-ea4a-44a6-ad3c-0eae21a63642'
+
 def ApplyEdits(url, token, deltas):
-        #applies edits to service, returns new serverGen/success code
-        #deltas = dictionary
-        #convert to json and upload to AGOL
+    #applies edits to service, returns new serverGen/success code
+
+    deltas = [deltas.update({'id': 0})]
+
+    data = {'token': token,
+            'useGlobalIds': 'true'}
+
+    url += '/applyEdits'
+
+    url = CreateUrl(url, data)
+
+    response = requests.post(url, json={'edits': deltas})
+    print(response.content)
     return None
 
 base_url = 'https://services1.arcgis.com/fBc8EJBxQRMcHlei/arcgis/rest/services/REDW_AGOL_PythonSyncTest_py/FeatureServer'
 
 
 token = GetToken(base_url, 'REDW_Python', 'Benefit4u!')
+#serverGens = GetServerGen(base_url, token)
 serverGens = [{'id': 0, 'minServerGen': 54927109, 'serverGen': 56891349}]
-ExtractChanges(base_url, token, serverGens)
-url = 'https://nps.maps.arcgis.com/sharing/generateToken'
-CheckService('https://services1.arcgis.com/fBc8EJBxQRMcHlei/arcgis/rest/admin/services/REDW_AGOL_PythonSyncTest_py/FeatureServer/updateDefinition', token)
-##payload  = {'username' : 'REDW_Python',
-##				'password' : 'Benefit4u!',
-##				'referer' : 'www.arcgis.com'
-##                                }
-##
-##print(GetURL(url,payload))
-
+#print(serverGens)
+deltas = ExtractChanges(base_url, serverGens, token)
+ApplyEdits(base_url, token, deltas)
