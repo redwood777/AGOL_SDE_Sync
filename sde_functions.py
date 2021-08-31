@@ -97,14 +97,25 @@ def RemoveNulls(dict_in):
 
 def AddQuotes(dict_in):
     #adds quote marks to non-float values, turns all values into strings, escapes apostrophes
-    for k in dict_in.keys():           
-        if not isinstance(dict_in[k], float):
-            dict_in[k] = str(dict_in[k]).replace("'", "''")
-            dict_in[k] = "'{}'".format(dict_in[k])
-        else:
-            dict_in[k] = str(dict_in[k])
-        
+    
+    for k in dict_in.keys():
+        if k.lower() in ['editdate', 'createdate']:
+            timestamp = True
+            try:
+                epoch = int(dict_in[k])
+            except:
+                timestamp = False
 
+            if(timestamp):
+                dict_in[k] = "DATEADD(S, {}, '1970-01-01')".format(epoch/1000)
+                
+        else:
+            if (not isinstance(dict_in[k], float)) and (not isinstance(dict_in[k], int)):
+                dict_in[k] = str(dict_in[k]).replace("'", "''")
+                dict_in[k] = "'{}'".format(dict_in[k])
+            else:
+                dict_in[k] = str(dict_in[k])
+        
     return dict_in
 
 def SdeObjectIdsToGlobalIds(connection, objectIds, fcName, registration_id):
@@ -320,8 +331,6 @@ def EditTable(query, connection, rowCount):
         print('  Executed SQL query: {}\n'.format(query))
         print('  Rolling back SQL edits and exiting.')
         connection.rollback()
-        connection.close()
-        exit()
         return False
 
     return True
@@ -490,17 +499,18 @@ def ApplyEdits(connection, registration_id, fcName, json_dict):
     adds, updates, deleteGUIDs = JsonToSqlDeltas(json_dict)
 
     for add in adds:
-        Add(connection, fcName, add)
+        if not Add(connection, fcName, add):
+            return False
 
     for update in updates:
-        Update(connection, fcName, update)
+        if not Update(connection, fcName, update):
+            return False
 
     for GUID in deleteGUIDs:
-        Delete(connection, fcName, GUID)
+        if not Delete(connection, fcName, GUID):
+            return False
     
-    return None
-
-#GeomTextToDict('')
+    return True
 
 def test():
     connection = Connect('inpredwgis2', 'REDWTest', 'REDW_Python', 'Benefit4u!123')

@@ -6,9 +6,24 @@
     
 import json
 import copy
-import sde_functions as sde
-import agol_functions as agol
+#import sde_functions as sde
+#import agol_functions as agol
 import ui_functions as ui
+
+sde = None
+agol = None
+
+def ImportSDE():
+    global sde
+    if sde == None:
+        ui.Debug('Loading SDE functions...\n', 2)
+        import sde_functions as sde
+
+def ImportAGOL():
+    global agol
+    if agol == None:
+        ui.Debug('Loading AGOL functions...\n', 2)
+        import agol_functions as agol
 
 def LoadConfig():
     try:
@@ -50,35 +65,134 @@ def WriteSyncs(syncs):
     json.dump(syncs, syncs_file, indent=4)
     syncs_file.close()
 
+def CreateNewSync(cfg):
+    #UI to create a new sync
+
+    print('Please ensure that the two copies you are setting up for sync are currently identical!\nThis tool may not function correctly otherwise!\n')
+
+    name = raw_input('Please enter a name for this sync:')
+
+    numbers = ['first', 'second']
+
+    sync = {'name': name, 'first': {}, 'second': {}}
+    
+    i = 0
+    while(i < 2): 
+        print('\nEnter the details for your {} service:\n').format(numbers[i])
+
+        types = ['SDE', 'AGOL']
+
+        serviceType = ui.Options('Select service type:', types)
+
+        if(serviceType == 1):
+            #for SDE services
+
+            ImportSDE()
+
+            #get database name
+            database = raw_input('Enter SDE database name (i.e. redw):')
+
+            #get featureclass name
+            fcName = raw_input('Enter featureclass name:')
+
+            print('')
+
+            #check that featureclass exists in sde table registry 
+            connection = sde.Connect(cfg.SQL_hostname, database, cfg.SQL_username, cfg.SQL_password)
+
+            if(sde.GetRegistrationId(connection, fcName) != None):
+                
+                #get current information
+                stateId = sde.GetCurrentStateId(connection)
+                globalIds = sde.GetGlobalIds(connection, fcName)
+
+                if(len(globalIds) < 1):
+                    print('Featureclass has no global ids!\n')
+                    continue
+
+                ui.Debug('Featureclass added successfully!\n', 1)
+
+                service = {'servergen': {'stateId': stateId, 'globalIds': globalIds},
+                           'type': 'SDE',
+                           'featureclass': fcName,
+                           'database': database}
+            else:
+                continue
+            
+        else:
+            #for AGOL services
+            ImportAGOL()
+            
+            #get service details
+            url = raw_input('Enter service url:')
+            layerId = int(raw_input('Enter service layer id:'))
+
+            #check that service is set up correctly
+            token = agol.GetToken(cfg.AGOL_url, cfg.AGOL_username, cfg.AGOL_password)
+            ready, serverGen = agol.CheckService(url, layerId, token)
+
+            if not ready:
+                continue
+
+            ui.Debug('Feature service added successfully!\n', 1)
+
+            service = {'type': 'AGOL',
+                       'serviceUrl': url,
+                       'layerId': layerId,
+                       'servergen': serverGen}
+
+        sync[numbers[i]] = service
+        i = i + 1
+
+    return sync
+
 def ExtractChanges(service, serverGen, cfg):
     #wrapper for SQL/AGOL extract changes functions
     if(service['type'] == 'SDE'):
+        ImportSDE()
+        
         connection = sde.Connect(cfg.SQL_hostname, service['database'], cfg.SQL_username, cfg.SQL_password)
         registration_id = sde.GetRegistrationId(connection, service['featureclass'])
+        if registration_id == None:
+            connection.close()
+            return False
+        
         deltas = sde.ExtractChanges(connection, registration_id, service['featureclass'], serverGen['globalIds'], serverGen['stateId'])
-        connection.close()
+
+        data = {'connection': connection}
+        
     
     elif(service['type'] == 'AGOL'):
+        ImportAGOL()
+        
         token = agol.GetToken(cfg.AGOL_url, cfg.AGOL_username, cfg.AGOL_password)
         ready, newServerGen = agol.CheckService(service['serviceUrl'], service['layerId'], token)
 
         if not ready:
-            return
+            return False
 
         deltas = agol.ExtractChanges(service['serviceUrl'], service['layerId'], serverGen, token)
 
-    return deltas
+        data = {'token': token}
 
-def ApplyEdits(service, cfg, deltas):
+    return deltas, data
+
+def ApplyEdits(service, cfg, deltas, data=None):
     #wrapper for SQL/AGOL extract changes functions
     
     if(service['type'] == 'SDE'):
+        ImportSDE()
         #connect
-        connection = sde.Connect(cfg.SQL_hostname, service['database'], cfg.SQL_username, cfg.SQL_password)
+
+        if data == None:
+            connection = sde.Connect(cfg.SQL_hostname, service['database'], cfg.SQL_username, cfg.SQL_password)
+        else:
+            connection = data['connection']
         
         #get registration id and extract changes
         registration_id = sde.GetRegistrationId(connection, service['featureclass'])
-        sde.ApplyEdits(connection, registration_id, service['featureclass'], deltas)
+        if not sde.ApplyEdits(connection, registration_id, service['featureclass'], deltas):
+            return False
 
         #commit changes
         connection.commit()
@@ -93,14 +207,19 @@ def ApplyEdits(service, cfg, deltas):
         return {'stateId': state_id, 'globalIds': globalIds}
 
     elif(service['type'] == 'AGOL'):
-        token = agol.GetToken(cfg.AGOL_url, cfg.AGOL_username, cfg.AGOL_password)
-        ready = agol.CheckService(service['serviceUrl'], service['layerId'], token)
+        ImportAGOL()
 
-        if not ready:
-            return
+        if data == None:
+            token = agol.GetToken(cfg.AGOL_url, cfg.AGOL_username, cfg.AGOL_password)
+            ready = agol.CheckService(service['serviceUrl'], service['layerId'], token)
+
+            if not ready:
+                return False
+        else:
+            token = data['token']
 
         if not agol.ApplyEdits(service['serviceUrl'], service['layerId'], token, deltas):
-            return
+            return False
 
         ready, newServerGen = agol.CheckService(service['serviceUrl'], service['layerId'], token)
 
@@ -119,37 +238,50 @@ def main():
         exit()
 
     #prompt user to select sync
-    menu = [s['name'] for s in syncs]
+    syncNames = [s['name'] for s in syncs]
+    menu = syncNames[:]
     menu.append('Create new')
+    menu.append('Delete sync')
     choice = ui.Options('Select sync:', menu, allow_filter=True)
 
-    if (choice == (len(menu))):
-        sync = ui.CreateNewSync(cfg)
+    if (choice == (len(menu) - 1)):
+        sync = CreateNewSync(cfg)
         syncs.append(sync)
         WriteSyncs(syncs)
         print('Sync created! Exiting.')
-        exit()
+
+    elif (choice == len(menu)):
+        deleteIndex = ui.Options('Choose sync to delete', syncNames)
+        syncs.pop(deleteIndex - 1)
+        WriteSyncs(syncs)
+        print('Sync deleted! Exiting')
+        
     else:
         sync = syncs[choice - 1]
 
-    #Extract changes from both services
-    first_deltas = ExtractChanges(sync['first'], sync['first']['servergen'], cfg)
-    second_deltas = ExtractChanges(sync['second'], sync['second']['servergen'], cfg)
-    
-    #reconcile changes
-    first_deltas, second_deltas = ui.ResolveConflicts(first_deltas, second_deltas, 'PY_2', 'PY_3')
-    
-    #Apply edits
-    second_servergen = ApplyEdits(sync['second'], cfg, first_deltas)
-    first_servergen = ApplyEdits(sync['first'], cfg, second_deltas)
+        #Extract changes from both services
+        first_deltas, first_data = ExtractChanges(sync['first'], sync['first']['servergen'], cfg)
+        second_deltas, second_data = ExtractChanges(sync['second'], sync['second']['servergen'], cfg)
+        
+        #reconcile changes
+        first_deltas, second_deltas = ui.ResolveConflicts(first_deltas, second_deltas, 'PY_2', 'PY_3')
+        
+        #Apply edits
+        second_servergen = ApplyEdits(sync['second'], cfg, first_deltas, data=second_data)
+        first_servergen = ApplyEdits(sync['first'], cfg, second_deltas, data=first_data)
 
-    #Update servergens
-    syncs[choice - 1]['first']['servergen'] = first_servergen
-    syncs[choice - 1]['second']['servergen'] = second_servergen
-    
-    WriteSyncs(syncs)
+        #check success
+        if (second_servergen and first_servergen):    
+            #Update servergens
+            syncs[choice - 1]['first']['servergen'] = first_servergen
+            syncs[choice - 1]['second']['servergen'] = second_servergen
+            
+            WriteSyncs(syncs)
 
-    print('Done!')
+            print('Success!')
+            return
+
+        print('Failed.')
     
     
     

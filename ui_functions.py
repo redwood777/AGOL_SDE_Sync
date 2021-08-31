@@ -1,6 +1,4 @@
 import json
-import sde_functions as sde
-import agol_functions as agol
 
 def GetGlobalIds(dict_in):
     #pulls global ids from adds or updates dictionary, returns as set
@@ -40,84 +38,6 @@ def Options(prompt, menu, allow_filter=False, filter_string = ''):
                 return Options(prompt, menu, allow_filter=True, filter_string = response)
         else:
             print('\nInvalid response!\n')
-            
-def CreateNewSync(cfg):
-    #UI to create a new sync
-
-    print('Please ensure that the two copies you are setting up for sync are currently identical!\nThis tool may not function correctly otherwise!\n')
-
-    name = raw_input('Please enter a name for this sync:')
-
-    numbers = ['first', 'second']
-
-    sync = {'name': name, 'first': {}, 'second': {}}
-    
-    i = 0
-    while(i < 2): 
-        print('\nEnter the details for your {} service:\n').format(numbers[i])
-
-        types = ['SDE', 'AGOL']
-
-        serviceType = Options('Select service type:', types)
-
-        if(serviceType == 1):
-            #for SDE services
-
-            #get database name
-            database = raw_input('Enter SDE database name (i.e. redw):')
-
-            #get featureclass name
-            fcName = raw_input('Enter featureclass name:')
-
-            #check that featureclass exists in sde table registry 
-            connection = sde.Connect(cfg.SQL_hostname, database, cfg.SQL_username, cfg.SQL_password)
-
-            if(sde.GetRegistrationId(connection, fcName) != None):
-                
-                #get current information
-                stateId = sde.GetCurrentStateId(connection)
-                globalIds = sde.GetGlobalIds(connection, fcName)
-
-                if(len(globalIds) < 1):
-                    print('Featureclass has no global ids!')
-                    continue
-
-                service = {'servergen': {'stateId': stateId, 'globalIds': globalIds},
-                           'type': 'SDE',
-                           'featureclass': fcName,
-                           'database': database}
-            else:
-                continue
-            
-        else:
-            #for AGOL services
-
-            #get service details
-            url = raw_input('Enter service url:')
-            layerId = int(raw_input('Enter service layer id:'))
-
-            #check that service is set up correctly
-            token = agol.GetToken(cfg.AGOL_url, cfg.AGOL_username, cfg.AGOL_password)
-            ready, serverGen = agol.CheckService(url, layerId, token)
-
-            if not ready:
-                continue
-
-            service = {'type': 'AGOL',
-                       'serviceUrl': url,
-                       'layerId': layerId,
-                       'servergen': serverGen}
-
-        sync[numbers[i]] = service
-        i = i + 1
-
-    return sync
-
-            
-
-            
-            
-    
 
 def ResolveConflicts(FIRST_deltas, SECOND_deltas, first_name, second_name):
     #Finds all conflicting edits. Resolves conflicts by user input. Returns revised SECOND_deltas and FIRST_deltas
@@ -289,8 +209,8 @@ def SetLogLevel(cfg):
         logLevel = 1
     
 
-def Debug(message, messageLevel):
+def Debug(message, messageLevel, indent=0):
     global logLevel
     
     if(messageLevel <= logLevel):
-        print(message)
+        print('{}{}'.format((indent*' '), message))

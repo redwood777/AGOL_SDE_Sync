@@ -14,14 +14,13 @@ def GetToken(url, username, password):
     r = requests.post(url, data=payload)
 
     response = json.loads(r.content)
-    
-    try:
-        token = response['token']
-    except:
+
+    if not response.has_key('token'):
         print('No token returned!')
         print(response)
-
-    return token
+        return
+    
+    return response['token']
 
 
 def CreateUrl(base_url, params):
@@ -32,12 +31,11 @@ def CreateUrl(base_url, params):
         
     base_url += 'f=json'
     
-    ui.Debug('URL: {}'.format(base_url), 3)
+    ui.Debug('URL:\n{}\n'.format(base_url), 3)
     
     return base_url
                 
                 
-
 def ApiCall(url, data, token): #, serverGen):
     #performs async rest api call 
 
@@ -141,53 +139,70 @@ def ExtractChanges(url, layer, serverGen, token):
     
     response = ApiCall(url, data, token)
 
-    return response['edits'][0]['features']
+    try:
+        return response['edits'][0]['features']
+    except:
+        return 
 
 def ApplyEdits(url, layer, token, deltas):
     #applies edits to service, returns success boolean
 
     ui.Debug('Applying edits to AGOL...\n', 1)
+
+    deltas['deletes'] = deltas.pop('deleteIds')
     
     deltas['id'] = layer
 
     #print(json.dumps(deltas, indent=4))
 
     data = {'token': token,
-            'edits': [deltas],
+            'edits': json.dumps([deltas]),
             'useGlobalIds': 'true'}
 
     url += '/applyEdits'
 
     url = CreateUrl(url, data)
 
+    print('\n{}\n'.format(url))
+
     response = requests.post(url) #, json={'edits': deltas})
 
     if(response.status_code != 200):
-        print('HTTP Error code: {}'.format(response.status_code))
+        print('HTTP Error code: {}\n'.format(response.status_code))
         return False
 
     print(response.content)
 
     try:
-        response = json.loads(response.content)[0]
+        content = json.loads(response.content)
     except:
         print('Invalid response')
         return False
 
-    success = True
+    print(json.dumps(content, indent=4))
 
-    for results in ['addResults', 'updateResults', 'deleteResults']:
-        if (results in response.keys()):
-            for result in response[results]:
-                if not result['success']:
-                    print(result['error'])
-                    success = False
-
-    if(not success):
-        print('Error: {}'.format(response[0]['error']))
+    try:
+        error = content['error']
+        print('Error: {}\n{}'.format(json.dumps(error, indent=4)))
         return False
     
-    return True
+    except:
+        content = content[0]
+
+        success = True
+
+        for results in ['addResults', 'updateResults', 'deleteResults']:
+            if (content.has_key(results)):
+                for result in content[results]:
+                    if not result['success']:
+                        print(result['error'])
+                        success = False
+
+        if(not success):
+            print('Error: {}'.format(response[0]['error']))
+            return False
+        
+        return True
 
 base_url = 'https://services1.arcgis.com/fBc8EJBxQRMcHlei/arcgis/rest/services/REDW_AGOL_PythonSyncTest_py/FeatureServer'
 
