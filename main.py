@@ -16,45 +16,55 @@ agol = None
 def ImportSDE():
     global sde
     if sde == None:
-        ui.Debug('Loading SDE functions...\n', 2)
+        ui.Debug('Loading SDE functions...', 2)
         import sde_functions as sde
+        ui.Debug('Done.\n', 2, indent=4)
 
 def ImportAGOL():
     global agol
     if agol == None:
-        ui.Debug('Loading AGOL functions...\n', 2)
+        ui.Debug('Loading AGOL functions...', 2)
         import agol_functions as agol
+        ui.Debug('Done.\n', 2, indent=4)
 
 def LoadConfig():
+    ui.Debug('Loading config...', 2)
     try:
         import config
     except:
-        print('Error loading config.')
+        print('Error loading config!\n')
         return False
         #TODO: make config builder?
+
+    ui.Debug('Done.\n', 2, indent=4)
     
     return config
         
 
 def LoadSyncs():
     #loads json file containing set up syncs
+    ui.Debug('Loading syncs...', 2)
+    
     try:
         syncs_file = open('syncs.json', 'r')
     except:
-        print('No sync file.')
+        print('No syncs.json file found!')
         return None
 
     try:
         syncs = json.load(syncs_file)
     except:
-        print('Invalid sync file')
+        print('Invalid sync file!')
         return None
 
     syncs_file.close()
+    ui.Debug('Done.\n', 2, indent=4)
     return syncs
 
 def WriteSyncs(syncs):
     #writes sync.json with data in syncs
+    ui.Debug('Updating syncs...', 2)
+    
     try:
         json.dumps(syncs)
     except:
@@ -64,6 +74,8 @@ def WriteSyncs(syncs):
     syncs_file = open('syncs.json', 'w')
     json.dump(syncs, syncs_file, indent=4)
     syncs_file.close()
+
+    ui.Debug('Done.\n', 2, indent=4)
 
 def CreateNewSync(cfg):
     #UI to create a new sync
@@ -100,15 +112,11 @@ def CreateNewSync(cfg):
             #check that featureclass exists in sde table registry 
             connection = sde.Connect(cfg.SQL_hostname, database, cfg.SQL_username, cfg.SQL_password)
 
-            if(sde.GetRegistrationId(connection, fcName) != None):
+            if(sde.CheckFeatureclass(connection, fcName)):
                 
                 #get current information
                 stateId = sde.GetCurrentStateId(connection)
                 globalIds = sde.GetGlobalIds(connection, fcName)
-
-                if(len(globalIds) < 1):
-                    print('Featureclass has no global ids!\n')
-                    continue
 
                 ui.Debug('Featureclass added successfully!\n', 1)
 
@@ -152,12 +160,12 @@ def ExtractChanges(service, serverGen, cfg):
         ImportSDE()
         
         connection = sde.Connect(cfg.SQL_hostname, service['database'], cfg.SQL_username, cfg.SQL_password)
-        registration_id = sde.GetRegistrationId(connection, service['featureclass'])
-        if registration_id == None:
-            connection.close()
-            return False
+        #registration_id = sde.GetRegistrationId(connection, service['featureclass'])
+        #if registration_id == None:
+        #    connection.close()
+        #    return False
         
-        deltas = sde.ExtractChanges(connection, registration_id, service['featureclass'], serverGen['globalIds'], serverGen['stateId'])
+        deltas = sde.ExtractChanges(connection, service['featureclass'], serverGen['globalIds'], serverGen['stateId'])
 
         data = {'connection': connection}
         
@@ -190,8 +198,9 @@ def ApplyEdits(service, cfg, deltas, data=None):
             connection = data['connection']
         
         #get registration id and extract changes
-        registration_id = sde.GetRegistrationId(connection, service['featureclass'])
-        if not sde.ApplyEdits(connection, registration_id, service['featureclass'], deltas):
+        #registration_id = sde.GetRegistrationId(connection, service['featureclass'])
+            
+        if not sde.ApplyEdits(connection, service['featureclass'], deltas):
             return False
 
         #commit changes

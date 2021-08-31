@@ -10,45 +10,55 @@ import time
 #import geojson
 
 def Connect(server, database, UID, PWD):
-    Debug('Connecting to SQL Server\n', 2)
+    Debug('Connecting to SQL Server...', 2)
     
     connection_string = 'Driver={{SQL Server}};Server={};Database={};User Id={};Password={}'.format(server, database, UID, PWD)
 
-    Debug('   SQL Connection string: "{}"\n'.format(connection_string), 3)
+    Debug('SQL Connection string: "{}"\n'.format(connection_string), 3, indent=4)
     
     try:
         connection = pyodbc.connect(connection_string)
-        return connection
+        
     except:
-        print("   Connection error:", sys.exc_info()[0])
+        Debug("Connection error: {}".format(sys.exc_info()[0]), 1, indent=4)
+        return False
 
-def ReadSqlMessage(query, connection):
-    cursor = connection.cursor()
-    cursor.execute(query)
-    return (cursor.rowcount) #[0][1].split('[SQL Server]')[1])
+    Debug('Connected!\n', 2, indent=4)
+    return connection
+
+##def ReadSqlMessage(query, connection):
+##    cursor = connection.cursor()
+##    cursor.execute(query)
+##    return (cursor.rowcount) #[0][1].split('[SQL Server]')[1])
 
 def ReadSQLWithDebug(query, connection):
     Debug('SQL Query: "{}"\n'.format(query), 3)
     return pd.read_sql(query, connection)
           
 
-def GetRegistrationId(connection, fcName):
-    #Takes name of featureclass and returns registration id, or None if table has not been registered as versioned
+def CheckFeatureclass(connection, fcName):
+    #Checks that featureclass has globalids and is registered as versioned
     
-    Debug('Getting registration id for "{}"...'.format(fcName), 2)
+    Debug('Checking "{}"...'.format(fcName), 2)
     
     query = "SELECT registration_id FROM SDE_table_registry WHERE table_name = '{}'".format(fcName)
-    
     data = ReadSQLWithDebug(query, connection)
     
-    try:
-        registration_id = data["registration_id"][0]
-    except:
-        print("   '{}' not found in SDE_table_registry. Check that it has been registered as versioned.\n".format(fcName))
-        return None
+    if (len(data.index) < 1):
+        Debug("'{}' not found in SDE table registry. Check that it has been registered as versioned.\n".format(fcName), 1)
+        return False
 
-    Debug('   Registration id: {}\n'.format(registration_id), 2)
-    return registration_id
+    query = "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = '{}' AND COLUMN_NAME = 'GLOBALID'".format(fcName)
+    data = ReadSQLWithDebug(query, connection)
+    
+    if (len(data.index) < 1):
+        Debug('Featureclass has no global IDs!', 1)
+        return False
+
+    Debug('Featureclass is valid.\n', 1, indent=4)
+    return True
+        
+        
 
 def GetCurrentStateId(connection):
     #returns current state id of DEFAULT version
@@ -77,17 +87,17 @@ def GetCurrentStateId(connection):
 ##    else:
 ##        query = "CREATE TABLE {} (NAME nvarchar, FIRST nvarchar, SECOND nvarchar, 
 
-def GetStatesSince(connection, lastState):
-    #Returns a list of SDE_STATE_IDs belonging to DEFAULT greater than lastState, and less than current state (in progress edits will have state ids > current state).
-
-    Debug('Getting DEFAULT version SDE states since state {}\n'.format(lastState), 2)
-
-    currentState = GetCurrentStateId(connection)
-        
-    query = "SELECT state_id FROM SDE_states WHERE lineage_name = 1 AND state_id > {} AND state_id <= {}".format(lastState, currentState)
-    data = ReadSQLWithDebug(query, connection)
-    
-    return ','.join([str(s) for s in data["state_id"].tolist()])
+##def GetStatesSince(connection, lastState):
+##    #Returns a list of SDE_STATE_IDs belonging to DEFAULT greater than lastState, and less than current state (in progress edits will have state ids > current state).
+##
+##    Debug('Getting DEFAULT version SDE states since state {}\n'.format(lastState), 2)
+##
+##    currentState = GetCurrentStateId(connection)
+##        
+##    query = "SELECT state_id FROM SDE_states WHERE lineage_name = 1 AND state_id > {} AND state_id <= {}".format(lastState, currentState)
+##    data = ReadSQLWithDebug(query, connection)
+##    
+##    return ','.join([str(s) for s in data["state_id"].tolist()])
 
 def RemoveNulls(dict_in):
     #returns dictionary with only non-null entries
@@ -118,28 +128,28 @@ def AddQuotes(dict_in):
         
     return dict_in
 
-def SdeObjectIdsToGlobalIds(connection, objectIds, fcName, registration_id):
-    #returns UNORDERED list of global ids corresponding to objectIds, IN NO PARTICULAR ORDER
-
-    Debug('Converting object IDs to global IDs\n', 2)
-    
-    
-    if len(objectIds) < 1:
-        return []
-    
-    objectIdsStr = ','.join(str(x) for x in objectIds)
-
-    Debug('   Object ids: {}\n'.format(objectIdsStr), 3)
-    
-    query = "SELECT GLOBALID FROM {} WHERE OBJECTID IN ({})".format(fcName, objectIdsStr)
-    data = ReadSQLWithDebug(query, connection)
-    first_list = data["GLOBALID"].tolist()
-    
-    query = "SELECT GLOBALID FROM a{} WHERE OBJECTID IN ({})".format(registration_id, objectIdsStr)
-    data = ReadSQLWithDebug(query, connection)
-    second_list = data["GLOBALID"].tolist()
-    
-    return first_list + list(set(second_list) - set(first_list))
+##def SdeObjectIdsToGlobalIds(connection, objectIds, fcName, registration_id):
+##    #returns UNORDERED list of global ids corresponding to objectIds, IN NO PARTICULAR ORDER
+##
+##    Debug('Converting object IDs to global IDs\n', 2)
+##    
+##    
+##    if len(objectIds) < 1:
+##        return []
+##    
+##    objectIdsStr = ','.join(str(x) for x in objectIds)
+##
+##    Debug('   Object ids: {}\n'.format(objectIdsStr), 3)
+##    
+##    query = "SELECT GLOBALID FROM {} WHERE OBJECTID IN ({})".format(fcName, objectIdsStr)
+##    data = ReadSQLWithDebug(query, connection)
+##    first_list = data["GLOBALID"].tolist()
+##    
+##    query = "SELECT GLOBALID FROM a{} WHERE OBJECTID IN ({})".format(registration_id, objectIdsStr)
+##    data = ReadSQLWithDebug(query, connection)
+##    second_list = data["GLOBALID"].tolist()
+##    
+##    return first_list + list(set(second_list) - set(first_list))
 
 def GetGlobalIds(connection, fcName):
     #returns list of global ids existing in featureclass
@@ -148,7 +158,11 @@ def GetGlobalIds(connection, fcName):
     query = "SELECT GLOBALID FROM {}_evw".format(fcName)
     globalIds = ReadSQLWithDebug(query, connection)
 
-    return globalIds['GLOBALID'].tolist()
+    globalIdsList = globalIds['GLOBALID'].tolist()
+
+    Debug('Done.\n', 2, indent=4)
+
+    return globalIdsList
 
 def GetChanges(connection, fcName, stateId):
     #returns rows from versioned view with state id > state
@@ -370,7 +384,7 @@ def Add(connection, fcName, dict_in):
           print('ERROR! Update object has no global ID!\n')
           print(json.dumps(dict_in))
 
-    Debug('Adding object {}\n'.format(globalId), 2)
+    Debug('Adding object {}'.format(globalId), 2, indent=4)
     
     query = "INSERT INTO {}_evw ({}, SHAPE) VALUES ({}, geometry::STGeomFromText('{}', 26910));".format(fcName, keys, values, shape) #TODO: make SRID variable
     
@@ -387,7 +401,7 @@ def Update(connection, fcName, dict_in):
     globalId = dict_in['GlobalID']
     del dict_in['GlobalID']
 
-    Debug('Updating object {}\n'.format(globalId), 2)
+    Debug('Updating object {}'.format(globalId), 2, indent=4)
 
     dict_in = AddQuotes(dict_in)
 
@@ -406,23 +420,23 @@ def Update(connection, fcName, dict_in):
 def Delete(connection, fcName, GUID):
     #remove feature from versioned view of featureclass
 
-    Debug('Deleting object {}\n'.format(GUID), 2)
+    Debug('Deleting object {}'.format(GUID), 2, indent=4)
     
     query = "DELETE FROM  {}_evw WHERE GLOBALID = '{}'".format(fcName, GUID)
     
     return EditTable(query, connection, 1)
     
 
-def ExtractChanges(connection, registration_id, fcName, lastGlobalIds, lastState):
+def ExtractChanges(connection, fcName, lastGlobalIds, lastState):
     #returns object lists for adds and updates, and list of objects deleted
-    print('Extracting changes from {}...\n'.format(fcName))
+    Debug('Extracting changes from {}...\n'.format(fcName), 1)
 
     #get state ids for recent edits
-    states = GetStatesSince(connection, lastState)
+    #states = GetStatesSince(connection, lastState)
 
-    if(len(states) < 1):
-        #No state ids to check
-        return {'adds': [], 'updates':[], 'deleteIds': []}
+##    if(len(states) < 1):
+##        #No state ids to check
+##        return {'adds': [], 'updates':[], 'deleteIds': []}
     
     #get adds and deletes from delta tables
 ##  adds = GetAdds(connection, registration_id, states)
@@ -433,7 +447,7 @@ def ExtractChanges(connection, registration_id, fcName, lastGlobalIds, lastState
     changes = GetChanges(connection, fcName, lastState)
 
     #extrapolate updates and deletes
-    Debug('Processing changes...', 1)
+    Debug('Processing changes...', 2, indent=4)
 
     #missing ids = deletes
     deleteIds = list(set(lastGlobalIds).difference(globalIds))
@@ -444,11 +458,11 @@ def ExtractChanges(connection, registration_id, fcName, lastGlobalIds, lastState
     #new ids = adds
     addIds = list(changeGlobalIds.difference(lastGlobalIds))
 
-    print('lastIds', lastGlobalIds)
-    print('ids', globalIds)
-    print('changed', changeGlobalIds)
-    print('deletes', deleteIds)
-    print('added', addIds)
+##    print('lastIds', lastGlobalIds)
+##    print('ids', globalIds)
+##    print('changed', changeGlobalIds)
+##    print('deletes', deleteIds)
+##    print('added', addIds)
 
     #get rows containing adds
     addRows = changes['GlobalID'].isin(addIds)
@@ -456,7 +470,6 @@ def ExtractChanges(connection, registration_id, fcName, lastGlobalIds, lastState
     #split changes into adds and updates
     adds = changes[addRows]
     updates = changes[~addRows]
-    
     
     #find updates, remove them from adds and deletes table, and add them to updates table
     #in SQL, updates are stored as an add and a delete occuring at the same SDE_STATE
@@ -486,6 +499,8 @@ def ExtractChanges(connection, registration_id, fcName, lastGlobalIds, lastState
 
     #print("ADDS:", adds, "\nUPDATES:",updates,"\nDELETES:",deleteGUIDs)
     deltas = SqlDeltasToJson(adds, updates, deleteIds)
+
+    Debug('Done.', 1, indent=4)
     
     return deltas
 
@@ -493,9 +508,9 @@ def ExtractChanges(connection, registration_id, fcName, lastGlobalIds, lastState
     #parsed = json.loads(result)
     #print(json.dumps(parsed, indent=4))
 
-def ApplyEdits(connection, registration_id, fcName, json_dict):
+def ApplyEdits(connection, fcName, json_dict):
     #applies deltas to versioned view. Returns success codes and new SDE_STATE_ID
-    print('Applying edits...\n')
+    Debug('Applying edits to {}...'.format(fcName), 1)
     adds, updates, deleteGUIDs = JsonToSqlDeltas(json_dict)
 
     for add in adds:
@@ -509,35 +524,10 @@ def ApplyEdits(connection, registration_id, fcName, json_dict):
     for GUID in deleteGUIDs:
         if not Delete(connection, fcName, GUID):
             return False
+
+    Debug('Done.', 1, indent=4)
     
     return True
 
-def test():
-    connection = Connect('inpredwgis2', 'REDWTest', 'REDW_Python', 'Benefit4u!123')
-    
-    #cursor = connection.cursor()
-    #query = "UPDATE AGOL_TEST_PY_2_evw SET Taxonomy = 'Obla dee' WHERE OBJECTID = 484
-    # execute the query and read to a dataframe in Python
-    #data = ReadSQLWithDebug(query, connection)
-    #print(data)
-
-
-    GetSyncs(connection, 'AGOL_TEST_PY_2')
-
-    #registration_id = GetRegistrationId(connection, 'AGOL_TEST_PY_2')
-
-    #json_dict = ExtractChanges(connection, registration_id, 'AGOL_TEST_PY_2', 0)
-
-    #ApplyEdits(connection, registration_id, 'AGOL_TEST_PY_2', json_dict)
-    #ids = GetSdeStateIdsSinceId(connection, 'AGOL_TEST_PY_2', 'DEFAULT', 0)
-    
-    #deletes = sql.GetDeletes(connection, registration_id, 0)
-    #sql.SdeObjectIdsToGlobalIds(connection, deletes, 'AGOL_TEST_PY_2', registration_id)
-    
-    connection.close()
-
-if __name__ == '__main__':
-    import main
-    main.test()
 
 

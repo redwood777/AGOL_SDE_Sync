@@ -1,12 +1,12 @@
 import json
 import requests
-import ui_functions as ui
+from ui_functions import Debug
 import time
 
 def GetToken(url, username, password):
     #returns token for use with further requests
 
-    ui.Debug('Getting AGOL token...\n', 2)
+    Debug('Getting AGOL token...\n', 2)
     
     url = url + '/sharing/generateToken'
     payload  = {'username' : username,'password' : password,'referer' : 'www.arcgis.com','f' : 'json' }
@@ -19,6 +19,8 @@ def GetToken(url, username, password):
         print('No token returned!')
         print(response)
         return
+
+    Debug('Token aquired.', 2, indent=4)
     
     return response['token']
 
@@ -31,7 +33,7 @@ def CreateUrl(base_url, params):
         
     base_url += 'f=json'
     
-    ui.Debug('URL:\n{}\n'.format(base_url), 3)
+    Debug('URL:\n{}\n'.format(base_url), 3)
     
     return base_url
                 
@@ -39,7 +41,7 @@ def CreateUrl(base_url, params):
 def ApiCall(url, data, token): #, serverGen):
     #performs async rest api call 
 
-    ui.Debug('Sending API request...\n', 2)
+    Debug('Sending API request...\n', 2)
 
     url = CreateUrl(url, data)
     response = requests.post(url)
@@ -51,10 +53,10 @@ def ApiCall(url, data, token): #, serverGen):
     while True:
         time.sleep(3)
 
-        ui.Debug('Checking status URL...', 2)
+        Debug('Checking status URL...', 2)
         response = requests.post(url)
         content = json.loads(response.content)
-        ui.Debug('Status: {}'.format(content['status']), 2)
+        Debug('Status: {}'.format(content['status']), 2)
         
         if (content["status"] != 'Pending'):
             break
@@ -64,7 +66,7 @@ def ApiCall(url, data, token): #, serverGen):
         return
 
     else:
-        ui.Debug('\nGetting result...\n', 2)
+        Debug('\nGetting result...\n', 2)
         
         url = content['resultUrl']
         url = CreateUrl(url, data)
@@ -80,7 +82,7 @@ def CheckService(base_url, layer, token): #, serverGen):
     #returns False if service is missing capabilities
     #returns True, serverGen if service is set up correctly
 
-    ui.Debug('Checking AGOL service capabilities...\n', 1)
+    Debug('Checking AGOL service capabilities...', 1)
 
     data  = {'token': token,
             'returnUpdates': True}
@@ -117,14 +119,14 @@ def CheckService(base_url, layer, token): #, serverGen):
         print('Layer {} does not exist'.format(layer))
         return False, None
 
+    Debug('Feature service is valid.', 1, indent=4)
+    
     return True, serverGen
-
-
 
 def ExtractChanges(url, layer, serverGen, token):
     #extracts changes since specified serverGen and returns them as an object
 
-    ui.Debug('Extracting changes from AGOL...\n', 1)
+    Debug('Extracting changes from AGOL...', 1)
 
     data  = {'token': token,
             'layers': [layer],
@@ -135,19 +137,23 @@ def ExtractChanges(url, layer, serverGen, token):
             'dataFormat': 'json'}
 
                
-    url = base_url + '/extractChanges'
+    url = url + '/extractChanges'
     
     response = ApiCall(url, data, token)
 
     try:
-        return response['edits'][0]['features']
+        deltas = response['edits'][0]['features']
     except:
-        return 
+        return False
+
+    Debug('Success.', 1, indent=4)
+
+    return deltas
 
 def ApplyEdits(url, layer, token, deltas):
     #applies edits to service, returns success boolean
 
-    ui.Debug('Applying edits to AGOL...\n', 1)
+    Debug('Applying edits to AGOL...', 1)
 
     deltas['deletes'] = deltas.pop('deleteIds')
     
@@ -199,50 +205,13 @@ def ApplyEdits(url, layer, token, deltas):
                         success = False
 
         if(not success):
-            print('Error: {}'.format(response[0]['error']))
             return False
+
+        Debug('Success.', 1, indent=4)
         
         return True
 
-base_url = 'https://services1.arcgis.com/fBc8EJBxQRMcHlei/arcgis/rest/services/REDW_AGOL_PythonSyncTest_py/FeatureServer'
 
-deltas = {
-    "deleteIds": [], 
-    "adds": [], 
-    "updates": [
-        {
-            "geometry": {
-                "rings": [
-                    [
-                        [
-                            400256.578804272, 
-                            4640459.73021187
-                        ], 
-                        [
-                            400343.341193316, 
-                            4640363.63900759
-                        ], 
-                        [
-                            400200.17907481, 
-                            4640372.7397159
-                        ], 
-                        [
-                            400256.578804272, 
-                            4640459.73021187
-                        ]
-                    ]
-                ]
-            }, 
-            "attributes": {
-                "CreateUser": "REDW_Python", 
-                "GlobalID": "A6F21C34-7B36-48ED-9F16-EDB58DB3CE5C", 
-                "UTM_Zone": "10",
-                "Species_ID": 'BEOBOO',
-                "Taxonomy": 'MOBETTAS'
-            }
-        }
-    ]
-}
 
 #token = GetToken('https://nps.maps.arcgis.com', 'REDW_Python', 'Benefit4u!')
 #print(CheckService(base_url, 0, token))

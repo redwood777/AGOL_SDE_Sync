@@ -22,7 +22,7 @@ def Options(prompt, menu, allow_filter=False, filter_string = ''):
         string = ', or type to filter'
 
     while True:
-        response = unicode(raw_input('\nEnter selection{}:'.format(string)))
+        response = unicode(raw_input('Enter selection{}:'.format(string)))
         print('')
         if(response.isnumeric()):
             response = int(response)
