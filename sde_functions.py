@@ -5,6 +5,8 @@ import json
 from arcpy import FromWKB, AsShape
 from ui_functions import Debug
 import time
+from datetime import datetime
+
 #import shapely
 #from shapely.geometry import shape
 #import geojson
@@ -56,9 +58,7 @@ def CheckFeatureclass(connection, fcName):
         return False
 
     Debug('Featureclass is valid.\n', 1, indent=4)
-    return True
-        
-        
+    return True   
 
 def GetCurrentStateId(connection):
     #returns current state id of DEFAULT version
@@ -75,6 +75,15 @@ def GetCurrentStateId(connection):
 
     Debug('   SDE state id: {}\n'.format(state_id), 2)
     return int(state_id)
+
+def GetDatatypes(connection, fcName):
+    #grabs column datatypes from featureclass
+
+    query = "SELECT COLUMN_NAME, DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = '{}'".format(fcName)
+    response = ReadSQLWithDebug(query, connection)
+
+    print(response)
+    return response
 
 ##def GetSyncs(connection, syncTableName):
 ##    #loads live syncs
@@ -109,22 +118,22 @@ def AddQuotes(dict_in):
     #adds quote marks to non-float values, turns all values into strings, escapes apostrophes
     
     for k in dict_in.keys():
-        if k.lower() in ['editdate', 'createdate']:
-            timestamp = True
-            try:
-                epoch = int(dict_in[k])
-            except:
-                timestamp = False
-
-            if(timestamp):
-                dict_in[k] = "DATEADD(S, {}, '1970-01-01')".format(epoch/1000)
+##        if k.lower() in ['editdate', 'createdate']:
+##            timestamp = True
+##            try:
+##                epoch = int(dict_in[k])
+##            except:
+##                timestamp = False
+##
+##            if(timestamp):
+##                dict_in[k] = "DATEADD(S, {}, '1970-01-01')".format(epoch/1000)
                 
+        ##else:
+        if (not isinstance(dict_in[k], float)) and (not isinstance(dict_in[k], int)):
+            dict_in[k] = str(dict_in[k]).replace("'", "''")
+            dict_in[k] = "'{}'".format(dict_in[k])
         else:
-            if (not isinstance(dict_in[k], float)) and (not isinstance(dict_in[k], int)):
-                dict_in[k] = str(dict_in[k]).replace("'", "''")
-                dict_in[k] = "'{}'".format(dict_in[k])
-            else:
-                dict_in[k] = str(dict_in[k])
+            dict_in[k] = str(dict_in[k])
         
     return dict_in
 
@@ -143,7 +152,7 @@ def AddQuotes(dict_in):
 ##    
 ##    query = "SELECT GLOBALID FROM {} WHERE OBJECTID IN ({})".format(fcName, objectIdsStr)
 ##    data = ReadSQLWithDebug(query, connection)
-##    first_list = data["GLOBALID"].tolist()
+##    first_list = data["GLOBALID"].toliY_2st()
 ##    
 ##    query = "SELECT GLOBALID FROM a{} WHERE OBJECTID IN ({})".format(registration_id, objectIdsStr)
 ##    data = ReadSQLWithDebug(query, connection)
@@ -241,8 +250,10 @@ def EsriToWkb(jsn):
     wkt = geom.WKT
 
     Debug('      Converted WKT: {}\n'.format(wkt), 3)
+
+    sql = "geometry::STGeomFromText('{}', 26910)".format(wkt)
     
-    return wkt
+    return sql
 
 ##def WktToGeoJson(text):
 ##    #text = 'POLYGON ((400616.856061806 4640220.1292989273, 400528.97544409893 4640210.1569971107, 400502.5315446835 4640217.2087017745, 400507.11514948215 4640206.6311493963, 400598.9128298806 4640158.8985449821, 400616.856061806 4640220.1292989273))'
@@ -264,51 +275,109 @@ def EsriToWkb(jsn):
 ##
 ##    # Now it's very easy to get a WKT/WKB representation
 ##    return geom.wkt
+
+def SqlDatetimeToEpoch(string):
+    string = string.split('.')[0]
+    utc_time = datetime.strptime(string, "%Y-%m-%d %H:%M:%S")
+    return (utc_time - datetime(1970, 1, 1)).total_seconds()*1000
     
-def SqlToJson(df):
+def SqlToJson(df, datatypes):
     #takes adds or updates dataframe and converts into agol-json-like dictionary
     dict_out = []
 
     #separate shape column from dataframe
     shapes = df['SHAPE']
     df = df.drop(labels='SHAPE', axis='columns')
+
+    print(datatypes)
+    datetime_columns = datatypes[datatypes['DATA_TYPE'].str.contains('datetime')]['COLUMN_NAME'].tolist()
+    datetime_columns = [col.lower() for col in datetime_columns]
+
+##    for column in datetime_columns:
+##        df[column] = df[column].apply(SqlDatetimeToEpoch)
+##        print df[column]
+##        for i in range(0, len(df.index)):
+##            #df[column] = (df[column] - dt.datetime(1970,1,1)).dt.total_seconds()
+##            if df.iloc[i][column] != None:
+##                print(df.iloc[i][column])
+##                string = df.iloc[i][column].split('.')[0]
+##                print string
+##                utc_time = datetime.strptime(string, "%Y-%m-%d %H:%M:%S")
+##                df.iloc[i][column] = (utc_time - datetime(1970, 1, 1)).total_seconds()*1000
+##                print(df.iloc[i][column])
+
     
+    
+    #exit()
     for i in range(0, len(df.index)):
         geometry = WkbToEsri(shapes.iloc[i])
         #geometry = {"wkt": shapes[i]}
         attributes = df.iloc[i]
         attributes = json.loads(attributes.to_json(orient='index'))
         attributes = RemoveNulls(attributes)
+
+        for k in attributes.keys():
+            if k.lower() in datetime_columns:
+                epoch = SqlDatetimeToEpoch(attributes[k])
+                print str(epoch)
+                attributes[k] = epoch
         #print(attributes)
         entry = {'geometry': geometry, 'attributes': attributes}
         dict_out.append(entry)
 
     return dict_out
 
-def JsonToSql(deltas):
+def JsonToSql(deltas, datatypes):
     #takes adds or updates json and turns it into sql-writable format
     dict_out = []
+
+    #get datetime columns (need to be converted to epoch
+    datetime_columns = datatypes[datatypes['DATA_TYPE'].str.contains('datetime')]['COLUMN_NAME'].tolist()
+    datetime_columns = [col.lower() for col in datetime_columns]
     
     for delta in deltas:
         #turn geometry json into syntax for SQL
         SHAPE = EsriToWkb(delta['geometry'])
 
         #extract attributes
-        attributes = delta['attributes']
+        attributes = RemoveNulls(delta['attributes'])
+
+        #clean attributes
+        for key in attributes.keys():
+            #convert epoch timestamps to sql string
+            if key.lower() in datetime_columns:
+                timestamp = True
+                
+                try:
+                    epoch = int(attributes[key])
+                except:
+                    timestamp = False
+
+                if(timestamp):
+                    attributes[key] = "DATEADD(S, {}, '1970-01-01')".format(epoch/1000)
+            else:
+                #add quotes to strings, escape apostrophes
+                if (not isinstance(attributes[key], float)) and (not isinstance(attributes[key], int)):
+                    attributes[key] = str(attributes[key]).replace("'", "''")
+                    attributes[key] = "'{}'".format(attributes[key])
+                #convert everything else to a string for joining later
+                else:
+                    attributes[key] = str(attributes[key])
 
         #combine attributes and shape into one dict
         attributes.update({'SHAPE': SHAPE})
+
 
         dict_out.append(attributes)
 
     return dict_out
  
-def SqlDeltasToJson(adds, updates, deleteGUIDs):
+def SqlDeltasToJson(adds, updates, deleteGUIDs, datatypes):
     #turns adds, updates and deletes in SQL form to JSON form
 
     Debug('Converting SQL adds, updates, and deletes to json...\n', 2)
-    adds_json = SqlToJson(adds)
-    updates_json = SqlToJson(updates)
+    adds_json = SqlToJson(adds, datatypes)
+    updates_json = SqlToJson(updates, datatypes)
 
     #deleteGUIDs = ['{{{0}}}'.format(delete) for delete in deleteGUIDs]
 
@@ -370,8 +439,8 @@ def Add(connection, fcName, dict_in):
     #add a feature to the versioned view of a featureclass
     dict_in = RemoveNulls(dict_in)
 
-    shape = dict_in['SHAPE']
-    del dict_in['SHAPE']
+    #shape = dict_in['SHAPE']
+    #del dict_in['SHAPE']
 
     dict_in = AddQuotes(dict_in)
 
@@ -386,7 +455,7 @@ def Add(connection, fcName, dict_in):
 
     Debug('Adding object {}'.format(globalId), 2, indent=4)
     
-    query = "INSERT INTO {}_evw ({}, SHAPE) VALUES ({}, geometry::STGeomFromText('{}', 26910));".format(fcName, keys, values, shape) #TODO: make SRID variable
+    query = "INSERT INTO {}_evw ({}) VALUES ({});".format(fcName, keys, values) #TODO: make SRID variable
     
     return EditTable(query, connection, 1)
 
@@ -395,8 +464,8 @@ def Update(connection, fcName, dict_in):
 
     dict_in = RemoveNulls(dict_in)
 
-    shape = dict_in['SHAPE']
-    del dict_in['SHAPE']
+    #shape = dict_in['SHAPE']
+    #del dict_in['SHAPE']
 
     globalId = dict_in['GlobalID']
     del dict_in['GlobalID']
@@ -412,7 +481,7 @@ def Update(connection, fcName, dict_in):
 
     data = ','.join(pairs)
 
-    query = "UPDATE {}_evw SET {}, SHAPE=geometry::STGeomFromText('{}',26910) WHERE GLOBALID = '{}';".format(fcName, data, shape, globalId) #TODO: make SRID variable
+    query = "UPDATE {}_evw SET {} WHERE GLOBALID = '{}';".format(fcName, data, globalId) #TODO: make SRID variable
 
     return EditTable(query, connection, 1)
     
@@ -427,7 +496,7 @@ def Delete(connection, fcName, GUID):
     return EditTable(query, connection, 1)
     
 
-def ExtractChanges(connection, fcName, lastGlobalIds, lastState):
+def ExtractChanges(connection, fcName, lastGlobalIds, lastState, datatypes):
     #returns object lists for adds and updates, and list of objects deleted
     Debug('Extracting changes from {}...\n'.format(fcName), 1)
 
@@ -498,7 +567,7 @@ def ExtractChanges(connection, fcName, lastGlobalIds, lastState):
     #deleteGUIDs = SdeObjectIdsToGlobalIds(connection, deletes["SDE_DELETES_ROW_ID"].tolist(), fcName, registration_id)
 
     #print("ADDS:", adds, "\nUPDATES:",updates,"\nDELETES:",deleteGUIDs)
-    deltas = SqlDeltasToJson(adds, updates, deleteIds)
+    deltas = SqlDeltasToJson(adds, updates, deleteIds, datatypes)
 
     Debug('Done.', 1, indent=4)
     
@@ -508,10 +577,11 @@ def ExtractChanges(connection, fcName, lastGlobalIds, lastState):
     #parsed = json.loads(result)
     #print(json.dumps(parsed, indent=4))
 
-def ApplyEdits(connection, fcName, json_dict):
+def ApplyEdits(connection, fcName, json_dict, datatypes):
     #applies deltas to versioned view. Returns success codes and new SDE_STATE_ID
     Debug('Applying edits to {}...'.format(fcName), 1)
-    adds, updates, deleteGUIDs = JsonToSqlDeltas(json_dict)
+    
+    adds, updates, deleteGUIDs = JsonToSqlDeltas(json_dict, datatypes)
 
     for add in adds:
         if not Add(connection, fcName, add):
@@ -529,5 +599,8 @@ def ApplyEdits(connection, fcName, json_dict):
     
     return True
 
+#connection = Connect('inpredwgis2', 'REDWTest', 'REDW_Python', 'Benefit4u!123')
+#datatypes = GetDatatypes(connection, 'AGOL_TEST_PY_2')
+#print datatypes[datatypes['DATA_TYPE'].str.contains('datetime')]['COLUMN_NAME'].tolist()
 
 

@@ -160,14 +160,15 @@ def ExtractChanges(service, serverGen, cfg):
         ImportSDE()
         
         connection = sde.Connect(cfg.SQL_hostname, service['database'], cfg.SQL_username, cfg.SQL_password)
+        datatypes = sde.GetDatatypes(connection, service['featureclass'])
         #registration_id = sde.GetRegistrationId(connection, service['featureclass'])
         #if registration_id == None:
         #    connection.close()
         #    return False
         
-        deltas = sde.ExtractChanges(connection, service['featureclass'], serverGen['globalIds'], serverGen['stateId'])
+        deltas = sde.ExtractChanges(connection, service['featureclass'], serverGen['globalIds'], serverGen['stateId'], datatypes)
 
-        data = {'connection': connection}
+        data = {'connection': connection, 'datatypes': datatypes}
         
     
     elif(service['type'] == 'AGOL'):
@@ -194,13 +195,15 @@ def ApplyEdits(service, cfg, deltas, data=None):
 
         if data == None:
             connection = sde.Connect(cfg.SQL_hostname, service['database'], cfg.SQL_username, cfg.SQL_password)
+            datatypes = sde.GetDatatypes(connection, service['featureclass'])
         else:
             connection = data['connection']
+            datatypes = data['datatypes']
         
         #get registration id and extract changes
         #registration_id = sde.GetRegistrationId(connection, service['featureclass'])
             
-        if not sde.ApplyEdits(connection, service['featureclass'], deltas):
+        if not sde.ApplyEdits(connection, service['featureclass'], deltas, datatypes):
             return False
 
         #commit changes
