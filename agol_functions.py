@@ -94,14 +94,14 @@ def CheckService(base_url, layer, token): #, serverGen):
 
     if(response.status_code !=  200):
         print('HTTP Error code: {}'.format(response.status_code))
-        return False, None
+        return False, None, None
 
     try: 
         content = json.loads(response.content)
         capabilities = content['capabilities']
     except:
         print('Error parsing response!')
-        return False, None
+        return False, None, None
 
     capabilities = capabilities.lower()
     required = ['update', 'changetracking', 'create', 'delete', 'update', 'editing']
@@ -109,7 +109,7 @@ def CheckService(base_url, layer, token): #, serverGen):
     for req in required:
         if not req in capabilities:
             print('Missing capability: {}'.format(req))
-            return False, None
+            return False, None, None
 
     serverGens = content["changeTrackingInfo"]['layerServerGens']
     serverGen = [g for g in serverGens if g['id'] == layer]
@@ -118,16 +118,18 @@ def CheckService(base_url, layer, token): #, serverGen):
         serverGen = serverGen[0]
     except:
         print('Layer {} does not exist'.format(layer))
-        return False, None
+        return False, None, None
+
+    srid = content['spatialReference']['wkid']
 
     Debug('Feature service is valid.\n', 1, indent=4)
     
-    return True, serverGen
+    return True, serverGen, srid
 
 def ExtractChanges(url, layer, serverGen, token):
     #extracts changes since specified serverGen and returns them as an object
 
-    Debug('Extracting changes from AGOL...', 1)
+    Debug('Extracting changes from AGOL...\n', 1)
 
     data  = {'token': token,
             'layers': [layer],

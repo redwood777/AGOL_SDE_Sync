@@ -161,11 +161,7 @@ def RemoveNulls(dict_in):
     return dict_in
 
 def RemoveNullsDeltas(deltas):
-    for add in deltas['adds']:
-        add['attributes'] = RemoveNulls(add['attributes'])
-
-    for update in deltas['updates']:
-        update['attributes'] = RemoveNulls(update['attributes'])
+    
 
     return deltas
 
@@ -176,10 +172,7 @@ def ExtractChanges(service, serverGen, cfg):
         
         connection = sde.Connect(cfg.SQL_hostname, service['database'], cfg.SQL_username, cfg.SQL_password)
         datatypes = sde.GetDatatypes(connection, service['featureclass'])
-        #registration_id = sde.GetRegistrationId(connection, service['featureclass'])
-        #if registration_id == None:
-        #    connection.close()
-        #    return False
+        srid = sde.GetSRID(connection, service['featurelclass'])
         
         deltas = sde.ExtractChanges(connection, service['featureclass'], serverGen['globalIds'], serverGen['stateId'], datatypes)
 
@@ -190,7 +183,7 @@ def ExtractChanges(service, serverGen, cfg):
         ImportAGOL()
         
         token = agol.GetToken(cfg.AGOL_url, cfg.AGOL_username, cfg.AGOL_password)
-        ready, newServerGen = agol.CheckService(service['serviceUrl'], service['layerId'], token)
+        ready, newServerGen, srid = agol.CheckService(service['serviceUrl'], service['layerId'], token)
 
         if not ready:
             return False
@@ -199,7 +192,13 @@ def ExtractChanges(service, serverGen, cfg):
 
         data = {'token': token}
 
-    deltas = RemoveNullsDeltas(deltas)
+    for add in deltas['adds']:
+        add['attributes'] = RemoveNulls(add['attributes'])
+        add['geometry']['spatialReference'] = {'wkid': srid}
+
+    for update in deltas['updates']:
+        update['attributes'] = RemoveNulls(update['attributes'])
+        update['geometry']['spatialReference'] = {'wkid': srid}
 
     return deltas, data
 
@@ -240,7 +239,7 @@ def ApplyEdits(service, cfg, deltas, data=None):
 
         if data == None:
             token = agol.GetToken(cfg.AGOL_url, cfg.AGOL_username, cfg.AGOL_password)
-            ready = agol.CheckService(service['serviceUrl'], service['layerId'], token)
+            ready, gen, srid = agol.CheckService(service['serviceUrl'], service['layerId'], token)
 
             if not ready:
                 return False
@@ -250,7 +249,7 @@ def ApplyEdits(service, cfg, deltas, data=None):
         if not agol.ApplyEdits(service['serviceUrl'], service['layerId'], token, deltas):
             return False
 
-        ready, newServerGen = agol.CheckService(service['serviceUrl'], service['layerId'], token)
+        ready, newServerGen, srid = agol.CheckService(service['serviceUrl'], service['layerId'], token)
 
         return newServerGen
         

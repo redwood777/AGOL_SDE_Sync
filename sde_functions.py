@@ -80,10 +80,13 @@ def GetDatatypes(connection, fcName):
     print(response)
     return response
 
-#def GetSRID(connection, fcName):
+def GetSRID(connection, fcName):
     #gets SRID of featureclass
 
-    
+    query = "SELECT SHAPE.STSrid FROM {}_evw LIMIT 1"
+    response = ReadSQLWithDebug(query, connection)
+
+    return response[0]
 
 def RemoveNulls(dict_in):
     #returns dictionary with only non-null entries
@@ -137,23 +140,30 @@ def GetChanges(connection, fcName, stateId):
 
 def WkbToEsri(WKB):
     #converts well known binary to esri json
-    Debug('   Converting WKB to Esri Json', 2)
-    Debug('      WKB (as hex): {}'.format(WKB), 3)
+    Debug('Converting WKB to Esri Json...\n', 3)
+    Debug('WKB: {}\n'.format(WKB), 3, indent=4)
     
     geom = FromWKB(WKB)
     esri = geom.JSON
     
-    Debug('      Converted Esri Json: {}'.format(esri), 3)
+    Debug('Converted Esri Json: {}\n'.format(esri), 3, indent=4)
+    
     return json.loads(esri)
 
 def EsriToWkb(jsn):
     #converts esri json to well known text
 
-    Debug('   Converting Esri Json to WKT', 2)
+    Debug('Converting Esri Json to WKT...\n', 3)
+
+    try:
+        srid = jsn['spatialReference']['wkid']
+    except:
+        print('No wkid found! Defaulting to 26910.')
+        srid = 26910
     
     jsn = json.dumps(jsn)
     
-    Debug('      Esri Json: {}\n'.format(jsn), 3)
+    Debug('Esri Json: {}\n'.format(jsn), 3, indent=4)
           
     geom = AsShape(jsn, True)
     #p = shapely.wkt.loads(wkt_text)
@@ -162,9 +172,9 @@ def EsriToWkb(jsn):
     #print(geom.WKB)
     wkt = geom.WKT
 
-    Debug('      Converted WKT: {}\n'.format(wkt), 3)
+    Debug('Converted WKT: {}\n'.format(wkt), 3, indent=4)
 
-    sql = "geometry::STGeomFromText('{}', 26910)".format(wkt)
+    sql = "geometry::STGeomFromText('{}', {})".format(wkt, srid)
     
     return sql
 
@@ -181,26 +191,10 @@ def SqlToJson(df, datatypes):
     shapes = df['SHAPE']
     df = df.drop(labels='SHAPE', axis='columns')
 
-    print(datatypes)
+    #get columns containing datetime objects
     datetime_columns = datatypes[datatypes['DATA_TYPE'].str.contains('datetime')]['COLUMN_NAME'].tolist()
     datetime_columns = [col.lower() for col in datetime_columns]
-
-##    for column in datetime_columns:
-##        df[column] = df[column].apply(SqlDatetimeToEpoch)
-##        print df[column]
-##        for i in range(0, len(df.index)):
-##            #df[column] = (df[column] - dt.datetime(1970,1,1)).dt.total_seconds()
-##            if df.iloc[i][column] != None:
-##                print(df.iloc[i][column])
-##                string = df.iloc[i][column].split('.')[0]
-##                print string
-##                utc_time = datetime.strptime(string, "%Y-%m-%d %H:%M:%S")
-##                df.iloc[i][column] = (utc_time - datetime(1970, 1, 1)).total_seconds()*1000
-##                print(df.iloc[i][column])
-
     
-    
-    #exit()
     for i in range(0, len(df.index)):
         geometry = WkbToEsri(shapes.iloc[i])
         #geometry = {"wkt": shapes[i]}
@@ -208,18 +202,20 @@ def SqlToJson(df, datatypes):
         attributes = json.loads(attributes.to_json(orient='index'))
         attributes = RemoveNulls(attributes)
 
+        #convert datetime strings to epoch timestamps
         for k in attributes.keys():
             if k.lower() in datetime_columns:
                 epoch = SqlDatetimeToEpoch(attributes[k])
                 print str(epoch)
                 attributes[k] = epoch
+
         #print(attributes)
         entry = {'geometry': geometry, 'attributes': attributes}
         dict_out.append(entry)
 
     return dict_out
 
-def JsonToSql(deltas, datatypes):
+def JsonToSql(deltas, datatypes, srid):
     #takes adds or updates json and turns it into sql-writable format
     dict_out = []
 
@@ -229,24 +225,24 @@ def JsonToSql(deltas, datatypes):
     
     for delta in deltas:
         #turn geometry json into syntax for SQL
-        SHAPE = EsriToWkb(delta['geometry'])
+        SHAPE, srid = EsriToWkb(delta['geometry'])
 
         #extract attributes
         attributes = RemoveNulls(delta['attributes'])
 
         #clean attributes
         for key in attributes.keys():
+            
             #convert epoch timestamps to sql string
             if key.lower() in datetime_columns:
                 timestamp = True
-                
                 try:
                     epoch = int(attributes[key])
                 except:
                     timestamp = False
-
                 if(timestamp):
                     attributes[key] = "DATEADD(S, {}, '1970-01-01')".format(epoch/1000)
+                    
             else:
                 #add quotes to strings, escape apostrophes
                 if (not isinstance(attributes[key], float)) and (not isinstance(attributes[key], int)):
