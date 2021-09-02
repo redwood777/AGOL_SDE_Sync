@@ -65,10 +65,10 @@ def GetCurrentStateId(connection):
     try:
         state_id = response['state_id'][0]
     except:
-        print('   Fatal error! Could not aquire current state id.\n')
+        print('Fatal error! Could not aquire current state id.\n')
         exit()
 
-    Debug('   SDE state id: {}\n'.format(state_id), 2)
+    Debug('SDE state id: {}\n'.format(state_id), 2, indent=4)
     return int(state_id)
 
 def GetDatatypes(connection, fcName):
@@ -83,10 +83,17 @@ def GetDatatypes(connection, fcName):
 def GetSRID(connection, fcName):
     #gets SRID of featureclass
 
-    query = "SELECT SHAPE.STSrid FROM {}_evw LIMIT 1"
-    response = ReadSQLWithDebug(query, connection)
+    Debug('Getting SRID...', 2)
 
-    return response[0]
+    try:
+        query = "SELECT TOP 1 SHAPE.STSrid FROM {}_evw".format(fcName)
+        srid = int(response.iloc[0])
+        Debug('Done.\n', 2, indent=4)
+    except:
+        Debug('Error getting SRID! Defaulting to 26910.', 2, indent=4)
+        srid = 26910
+
+    return srid
 
 def RemoveNulls(dict_in):
     #returns dictionary with only non-null entries
@@ -215,7 +222,7 @@ def SqlToJson(df, datatypes):
 
     return dict_out
 
-def JsonToSql(deltas, datatypes, srid):
+def JsonToSql(deltas, datatypes):
     #takes adds or updates json and turns it into sql-writable format
     dict_out = []
 
@@ -225,7 +232,7 @@ def JsonToSql(deltas, datatypes, srid):
     
     for delta in deltas:
         #turn geometry json into syntax for SQL
-        SHAPE, srid = EsriToWkb(delta['geometry'])
+        SHAPE = EsriToWkb(delta['geometry'])
 
         #extract attributes
         attributes = RemoveNulls(delta['attributes'])
@@ -241,6 +248,8 @@ def JsonToSql(deltas, datatypes, srid):
                 except:
                     timestamp = False
                 if(timestamp):
+                    if epoch < 0:
+                        epoch = 0
                     attributes[key] = "DATEADD(S, {}, '1970-01-01')".format(epoch/1000)
                     
             else:
@@ -273,7 +282,7 @@ def SqlDeltasToJson(adds, updates, deleteGUIDs, datatypes):
 
     return dict_out
 
-def JsonToSqlDeltas(json_dict):
+def JsonToSqlDeltas(json_dict, datatypes):
     #turns JSON into adds, updates, and deletes in SQL form
 
     Debug('Converting json to adds, updates, and deletes for SQL...\n', 2)
@@ -283,8 +292,8 @@ def JsonToSqlDeltas(json_dict):
     
     deleteGUIDs = [delete.replace('{', '').replace('}', '') for delete in json_dict["deleteIds"]]
 
-    adds = JsonToSql(adds_json)
-    updates = JsonToSql(updates_json)
+    adds = JsonToSql(adds_json, datatypes)
+    updates = JsonToSql(updates_json, datatypes)
 
     return adds, updates, deleteGUIDs
 
@@ -305,23 +314,6 @@ def EditTable(query, connection, rowCount):
         return False
 
     return True
-    
-##    checks = 0
-##    while(cursor.rowcount == -1):
-##        time.sleep(0.05)
-##        checks += 1
-##
-##        if (checks > 200):
-##            print("  SQL Query timed out!\n")
-##            
-##            return False
-
-##    Debug("  Rows affected: {}\n".format(cursor.rowcount), 2)
-##          
-##    if(cursor.rowcount != rowCount):
-##        print('  Unexpected number of rows affected: {}\n'.format(cursor.rowcount))
-##        print('  Executed SQL query: {}\n'.format(query))
-##        return False
 
 def Add(connection, fcName, dict_in):
     #add a feature to the versioned view of a featureclass
@@ -330,7 +322,7 @@ def Add(connection, fcName, dict_in):
     #shape = dict_in['SHAPE']
     #del dict_in['SHAPE']
 
-    dict_in = AddQuotes(dict_in)
+    #dict_in = AddQuotes(dict_in)
 
     keys = ','.join(dict_in.keys())
     values = ','.join(dict_in.values())
@@ -360,7 +352,7 @@ def Update(connection, fcName, dict_in):
 
     Debug('Updating object {}'.format(globalId), 2, indent=4)
 
-    dict_in = AddQuotes(dict_in)
+    #dict_in = AddQuotes(dict_in)
 
     pairs = []
     
@@ -369,7 +361,7 @@ def Update(connection, fcName, dict_in):
 
     data = ','.join(pairs)
 
-    query = "UPDATE {}_evw SET {} WHERE GLOBALID = '{}';".format(fcName, data, globalId) #TODO: make SRID variable
+    query = "UPDATE {}_evw SET {} WHERE GLOBALID = {};".format(fcName, data, globalId) #TODO: make SRID variable
 
     return EditTable(query, connection, 1)
     
@@ -379,7 +371,7 @@ def Delete(connection, fcName, GUID):
 
     Debug('Deleting object {}'.format(GUID), 2, indent=4)
     
-    query = "DELETE FROM  {}_evw WHERE GLOBALID = '{}'".format(fcName, GUID)
+    query = "DELETE FROM  {}_evw WHERE GLOBALID = {}".format(fcName, GUID)
     
     return EditTable(query, connection, 1)
     
@@ -467,7 +459,7 @@ def ExtractChanges(connection, fcName, lastGlobalIds, lastState, datatypes):
 
 def ApplyEdits(connection, fcName, json_dict, datatypes):
     #applies deltas to versioned view. Returns success codes and new SDE_STATE_ID
-    Debug('Applying edits to {}...'.format(fcName), 1)
+    Debug('Applying edits to {}...\n'.format(fcName), 1)
     
     adds, updates, deleteGUIDs = JsonToSqlDeltas(json_dict, datatypes)
 
@@ -483,11 +475,12 @@ def ApplyEdits(connection, fcName, json_dict, datatypes):
         if not Delete(connection, fcName, GUID):
             return False
 
-    Debug('Done.', 1, indent=4)
+    Debug('Done.\n', 1, indent=4)
     
     return True
 
 #connection = Connect('inpredwgis2', 'REDWTest', 'REDW_Python', 'Benefit4u!123')
+#print(GetSRID(connection, 'AGOL_TEST_PY_2'))
 #datatypes = GetDatatypes(connection, 'AGOL_TEST_PY_2')
 #print datatypes[datatypes['DATA_TYPE'].str.contains('datetime')]['COLUMN_NAME'].tolist()
 

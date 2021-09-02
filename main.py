@@ -141,7 +141,7 @@ def CreateNewSync(cfg):
 
             #check that service is set up correctly
             token = agol.GetToken(cfg.AGOL_url, cfg.AGOL_username, cfg.AGOL_password)
-            ready, serverGen = agol.CheckService(url, layerId, token)
+            ready, serverGen, srid = agol.CheckService(url, layerId, token)
 
             if not ready:
                 continue
@@ -171,7 +171,7 @@ def ExtractChanges(service, serverGen, cfg):
         
         connection = sde.Connect(service['hostname'], service['database'], cfg.SQL_username, cfg.SQL_password)
         datatypes = sde.GetDatatypes(connection, service['featureclass'])
-        srid = sde.GetSRID(connection, service['featurelclass'])
+        srid = sde.GetSRID(connection, service['featureclass'])
         
         deltas = sde.ExtractChanges(connection, service['featureclass'], serverGen['globalIds'], serverGen['stateId'], datatypes)
 

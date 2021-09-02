@@ -1,54 +1,55 @@
 [
     {
         "second": {
+            "type": "AGOL", 
             "servergen": {
-                "serverGen": 57997489, 
+                "serverGen": 58064419, 
                 "id": 0, 
                 "minServerGen": 57939871
             }, 
-            "type": "AGOL", 
             "serviceUrl": "https://services1.arcgis.com/fBc8EJBxQRMcHlei/arcgis/rest/services/REDW_AGOL_PythonSyncTest_py/FeatureServer", 
             "layerId": 0
         }, 
-        "name": "AgolOne", 
+        "name": "AGOL/AGOL Test", 
         "first": {
-            "type": "SDE", 
+            "type": "AGOL", 
+            "servergen": {
+                "serverGen": 58064419, 
+                "id": 0, 
+                "minServerGen": 57939871
+            }, 
+            "serviceUrl": "https://services1.arcgis.com/fBc8EJBxQRMcHlei/arcgis/rest/services/REDW_AGOL_PythonSyncTest_py/FeatureServer", 
+            "layerId": 0
+        }
+    }, 
+    {
+        "second": {
+            "type": "AGOL", 
+            "servergen": {
+                "serverGen": 58098187, 
+                "id": 0, 
+                "minServerGen": 57939871
+            }, 
+            "serviceUrl": "https://services1.arcgis.com/fBc8EJBxQRMcHlei/arcgis/rest/services/REDW_AGOL_PythonSyncTest_py/FeatureServer", 
+            "layerId": 0
+        }, 
+        "name": "AgolONe", 
+        "first": {
             "servergen": {
                 "globalIds": [
                     "9540491D-D556-447E-8442-12084D1D3260", 
                     "4943D633-F0B2-4BED-83CB-E63764352BB5", 
                     "8C7908F6-69F6-4F22-A6BA-3926B10681C2", 
                     "0600494B-D048-4F1C-8063-0B1A5EDD7C0F", 
-                    "5757A9F8-203E-4F86-A8F3-6A5D27566F4E", 
+                    "B7B3DEFF-5E53-48B9-AE0F-7513F9B06CFE", 
                     "E80FAE6C-6EF5-4E02-AFCD-A24C48438A76"
                 ], 
-                "stateId": 111
+                "stateId": 118
             }, 
+            "hostname": "inpredwgis2", 
+            "type": "SDE", 
             "featureclass": "AGOL_TEST_PY_2", 
             "database": "REDWTest"
-        }
-    }, 
-    {
-        "second": {
-            "servergen": {
-                "serverGen": 58064419, 
-                "id": 0, 
-                "minServerGen": 57939871
-            }, 
-            "type": "AGOL", 
-            "serviceUrl": "https://services1.arcgis.com/fBc8EJBxQRMcHlei/arcgis/rest/services/REDW_AGOL_PythonSyncTest_py/FeatureServer", 
-            "layerId": 0
-        }, 
-        "name": "AGOL/AGOL Test", 
-        "first": {
-            "servergen": {
-                "serverGen": 58064419, 
-                "id": 0, 
-                "minServerGen": 57939871
-            }, 
-            "type": "AGOL", 
-            "serviceUrl": "https://services1.arcgis.com/fBc8EJBxQRMcHlei/arcgis/rest/services/REDW_AGOL_PythonSyncTest_py/FeatureServer", 
-            "layerId": 0
         }
     }
 ]
