@@ -45,7 +45,7 @@ def CheckFeatureclass(connection, fcName):
         Debug("'{}' not found in SDE table registry. Check that it has been registered as versioned.\n".format(fcName), 1)
         return False
 
-    query = "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = '{}' AND COLUMN_NAME = 'GLOBALID'".format(fcName)
+    query = "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = '{}' AND COLUMN_NAME = ".format(fcName)
     data = ReadSQLWithDebug(query, connection)
     
     if (len(data.index) < 1):

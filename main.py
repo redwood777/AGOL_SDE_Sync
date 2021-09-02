@@ -195,9 +195,18 @@ def ExtractChanges(service, serverGen, cfg):
         add['attributes'] = RemoveNulls(add['attributes'])
         add['geometry']['spatialReference'] = {'wkid': srid}
 
+        for k in add['attributes'].keys():
+            if k.lower() == 'objectid':
+                del add['attributes'][k]
+        
     for update in deltas['updates']:
         update['attributes'] = RemoveNulls(update['attributes'])
         update['geometry']['spatialReference'] = {'wkid': srid}
+
+        for k in update['attributes'].keys():
+            if k.lower() == 'objectid':
+                del update['attributes'][k]
+
 
     return deltas, data
 
