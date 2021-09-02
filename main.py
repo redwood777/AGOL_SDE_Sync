@@ -28,7 +28,7 @@ def ImportAGOL():
         ui.Debug('Done.\n', 2, indent=4)
 
 def LoadConfig():
-    ui.Debug('Loading config...', 2)
+    ui.Debug('Loading config...', 0)
     try:
         import config
     except:
@@ -36,7 +36,7 @@ def LoadConfig():
         return False
         #TODO: make config builder?
 
-    ui.Debug('Done.\n', 2, indent=4)
+    ui.Debug('Done.\n', 0, indent=4)
     
     return config
         
@@ -284,6 +284,7 @@ def main():
             print('Sync deleted!\n')
 
         elif (choice == (len(menu))):
+            print('HEHEHEHEHEHE')
             return
             
         else:
