@@ -28,11 +28,6 @@ def Connect(server, database, UID, PWD):
     Debug('Connected!\n', 2, indent=4)
     return connection
 
-##def ReadSqlMessage(query, connection):
-##    cursor = connection.cursor()
-##    cursor.execute(query)
-##    return (cursor.rowcount) #[0][1].split('[SQL Server]')[1])
-
 def ReadSQLWithDebug(query, connection):
     Debug('SQL Query: "{}"\n'.format(query), 3)
     return pd.read_sql(query, connection)
@@ -85,28 +80,10 @@ def GetDatatypes(connection, fcName):
     print(response)
     return response
 
-##def GetSyncs(connection, syncTableName):
-##    #loads live syncs
-##    query = "IF (EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = '{}')) PRINT 'true'; ELSE PRINT 'false';".format(syncTableName)
-##    response = ReadSqlMessage(query, connection)
-##    if (response == 'true'):
-##        query = "SELECT * FROM {}".format(syncTableName)
-##        reponse = ReadSQLWithDebug(query, connection)
-##        print response
-##    else:
-##        query = "CREATE TABLE {} (NAME nvarchar, FIRST nvarchar, SECOND nvarchar, 
+#def GetSRID(connection, fcName):
+    #gets SRID of featureclass
 
-##def GetStatesSince(connection, lastState):
-##    #Returns a list of SDE_STATE_IDs belonging to DEFAULT greater than lastState, and less than current state (in progress edits will have state ids > current state).
-##
-##    Debug('Getting DEFAULT version SDE states since state {}\n'.format(lastState), 2)
-##
-##    currentState = GetCurrentStateId(connection)
-##        
-##    query = "SELECT state_id FROM SDE_states WHERE lineage_name = 1 AND state_id > {} AND state_id <= {}".format(lastState, currentState)
-##    data = ReadSQLWithDebug(query, connection)
-##    
-##    return ','.join([str(s) for s in data["state_id"].tolist()])
+    
 
 def RemoveNulls(dict_in):
     #returns dictionary with only non-null entries
@@ -117,48 +94,13 @@ def RemoveNulls(dict_in):
 def AddQuotes(dict_in):
     #adds quote marks to non-float values, turns all values into strings, escapes apostrophes
     
-    for k in dict_in.keys():
-##        if k.lower() in ['editdate', 'createdate']:
-##            timestamp = True
-##            try:
-##                epoch = int(dict_in[k])
-##            except:
-##                timestamp = False
-##
-##            if(timestamp):
-##                dict_in[k] = "DATEADD(S, {}, '1970-01-01')".format(epoch/1000)
-                
-        ##else:
-        if (not isinstance(dict_in[k], float)) and (not isinstance(dict_in[k], int)):
-            dict_in[k] = str(dict_in[k]).replace("'", "''")
-            dict_in[k] = "'{}'".format(dict_in[k])
-        else:
-            dict_in[k] = str(dict_in[k])
+    if (not isinstance(dict_in[k], float)) and (not isinstance(dict_in[k], int)):
+        dict_in[k] = str(dict_in[k]).replace("'", "''")
+        dict_in[k] = "'{}'".format(dict_in[k])
+    else:
+        dict_in[k] = str(dict_in[k])
         
     return dict_in
-
-##def SdeObjectIdsToGlobalIds(connection, objectIds, fcName, registration_id):
-##    #returns UNORDERED list of global ids corresponding to objectIds, IN NO PARTICULAR ORDER
-##
-##    Debug('Converting object IDs to global IDs\n', 2)
-##    
-##    
-##    if len(objectIds) < 1:
-##        return []
-##    
-##    objectIdsStr = ','.join(str(x) for x in objectIds)
-##
-##    Debug('   Object ids: {}\n'.format(objectIdsStr), 3)
-##    
-##    query = "SELECT GLOBALID FROM {} WHERE OBJECTID IN ({})".format(fcName, objectIdsStr)
-##    data = ReadSQLWithDebug(query, connection)
-##    first_list = data["GLOBALID"].toliY_2st()
-##    
-##    query = "SELECT GLOBALID FROM a{} WHERE OBJECTID IN ({})".format(registration_id, objectIdsStr)
-##    data = ReadSQLWithDebug(query, connection)
-##    second_list = data["GLOBALID"].tolist()
-##    
-##    return first_list + list(set(second_list) - set(first_list))
 
 def GetGlobalIds(connection, fcName):
     #returns list of global ids existing in featureclass
@@ -193,35 +135,6 @@ def GetChanges(connection, fcName, stateId):
 
     return adds
 
-##def GetAdds(connection, registration_id, states):
-##    #returns list of objects in adds table with state ids in states
-##
-##    Debug('Getting adds...', 1)
-##
-##    #get rows from adds table since lastState
-##    query = "SELECT * FROM a{} WHERE SDE_STATE_ID IN ({})".format(registration_id, states)
-##    adds = ReadSQLWithDebug(query, connection)
-##
-##    if(len(adds.index) > 0):
-##        #reaquire SHAPE column as WKB
-##        query = "SELECT SHAPE.STAsBinary() FROM a{} WHERE SDE_STATE_ID IN ({})".format(registration_id, states)
-##        shape = ReadSQLWithDebug(query, connection)
-##        #print(shape['SHAPE'])
-##
-##        #replace shape column with text
-##        adds['SHAPE'] = shape.values
-##
-##    return adds
-
-##def GetDeletes(connection, registration_id, states):
-##    #returns list of objects deleted from versioned table registered with registration id since lastState
-##
-##    Debug('Getting deletes...', 1)
-##    
-##    query = "SELECT SDE_DELETES_ROW_ID, DELETED_AT FROM D{} WHERE DELETED_AT IN ({})".format(registration_id, states)
-##    data = ReadSQLWithDebug(query, connection)
-##    return data #["SDE_DELETES_ROW_ID"].tolist()
-
 def WkbToEsri(WKB):
     #converts well known binary to esri json
     Debug('   Converting WKB to Esri Json', 2)
@@ -254,27 +167,6 @@ def EsriToWkb(jsn):
     sql = "geometry::STGeomFromText('{}', 26910)".format(wkt)
     
     return sql
-
-##def WktToGeoJson(text):
-##    #text = 'POLYGON ((400616.856061806 4640220.1292989273, 400528.97544409893 4640210.1569971107, 400502.5315446835 4640217.2087017745, 400507.11514948215 4640206.6311493963, 400598.9128298806 4640158.8985449821, 400616.856061806 4640220.1292989273))'
-##    geom = wkt.loads(text)
-##    #geomType = text.split('(')[0].strip().lower()
-##
-##    #dict_out = {geom.geom_type: shapely.geometry.mapping(geom)['coordinates']}
-##    #print(json.dumps(dict_out))
-##    dict_out = geojson.Feature(geometry=geom, properties={})
-##    #dict_out = json.loads()
-##    #print(json.dumps(dict_out, indent=4))
-##
-##    return dict_out['geometry']
-##    #print(geom.geom_type)
-##    #dict_out = None
-##
-##def GeoJsonToWkt(dict_in):
-##    geom = shape(dict_in)
-##
-##    # Now it's very easy to get a WKT/WKB representation
-##    return geom.wkt
 
 def SqlDatetimeToEpoch(string):
     string = string.split('.')[0]

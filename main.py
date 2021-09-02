@@ -154,6 +154,21 @@ def CreateNewSync(cfg):
 
     return sync
 
+def RemoveNulls(dict_in):
+    #returns dictionary with only non-null entries
+    dict_in = {k: v for k, v in dict_in.items() if v is not None}
+
+    return dict_in
+
+def RemoveNullsDeltas(deltas):
+    for add in deltas['adds']:
+        add['attributes'] = RemoveNulls(add['attributes'])
+
+    for update in deltas['updates']:
+        update['attributes'] = RemoveNulls(update['attributes'])
+
+    return deltas
+
 def ExtractChanges(service, serverGen, cfg):
     #wrapper for SQL/AGOL extract changes functions
     if(service['type'] == 'SDE'):
@@ -183,6 +198,8 @@ def ExtractChanges(service, serverGen, cfg):
         deltas = agol.ExtractChanges(service['serviceUrl'], service['layerId'], serverGen, token)
 
         data = {'token': token}
+
+    deltas = RemoveNullsDeltas(deltas)
 
     return deltas, data
 

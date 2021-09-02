@@ -6,7 +6,7 @@ import time
 def GetToken(url, username, password):
     #returns token for use with further requests
 
-    Debug('Getting AGOL token...\n', 2)
+    Debug('Getting AGOL token...', 2)
     
     url = url + '/sharing/generateToken'
     payload  = {'username' : username,'password' : password,'referer' : 'www.arcgis.com','f' : 'json' }
@@ -20,7 +20,7 @@ def GetToken(url, username, password):
         print(response)
         return
 
-    Debug('Token aquired.', 2, indent=4)
+    Debug('Token aquired.\n', 2, indent=4)
     
     return response['token']
 
@@ -41,7 +41,7 @@ def CreateUrl(base_url, params):
 def ApiCall(url, data, token): #, serverGen):
     #performs async rest api call 
 
-    Debug('Sending API request...\n', 2)
+    Debug('Sending API request...', 2)
 
     url = CreateUrl(url, data)
     response = requests.post(url)
@@ -53,10 +53,10 @@ def ApiCall(url, data, token): #, serverGen):
     while True:
         time.sleep(3)
 
-        Debug('Checking status URL...', 2)
+        Debug('Checking status URL...', 2, indent=4)
         response = requests.post(url)
         content = json.loads(response.content)
-        Debug('Status: {}'.format(content['status']), 2)
+        Debug('Status: {}'.format(content['status']), 2, indent=6)
         
         if (content["status"] != 'Pending'):
             break
@@ -66,7 +66,7 @@ def ApiCall(url, data, token): #, serverGen):
         return
 
     else:
-        Debug('\nGetting result...\n', 2)
+        Debug('Getting result...', 2, indent=4)
         
         url = content['resultUrl']
         url = CreateUrl(url, data)
@@ -74,6 +74,7 @@ def ApiCall(url, data, token): #, serverGen):
         response = requests.post(url)
         content = json.loads(response.content)
         #print(json.dumps(content, indent=4))
+        Debug('Done.\n', 2, indent=4)
 
     return content
 
@@ -119,7 +120,7 @@ def CheckService(base_url, layer, token): #, serverGen):
         print('Layer {} does not exist'.format(layer))
         return False, None
 
-    Debug('Feature service is valid.', 1, indent=4)
+    Debug('Feature service is valid.\n', 1, indent=4)
     
     return True, serverGen
 
@@ -146,14 +147,14 @@ def ExtractChanges(url, layer, serverGen, token):
     except:
         return False
 
-    Debug('Success.', 1, indent=4)
+    Debug('Success.\n', 1, indent=4)
 
     return deltas
 
 def ApplyEdits(url, layer, token, deltas):
     #applies edits to service, returns success boolean
 
-    Debug('Applying edits to AGOL...', 1)
+    Debug('Applying edits to AGOL...\n', 1)
 
     deltas['deletes'] = deltas.pop('deleteIds')
     
@@ -165,13 +166,13 @@ def ApplyEdits(url, layer, token, deltas):
             'edits': json.dumps([deltas]),
             'useGlobalIds': 'true'}
 
-    url += '/applyEdits'
+    url += '/applyEdits?f=json'
 
-    url = CreateUrl(url, data)
+    #url = CreateUrl(url, data)
 
-    print('\n{}\n'.format(url))
+    Debug('\n{}\n'.format(url), 3)
 
-    response = requests.post(url) #, json={'edits': deltas})
+    response = requests.post(url, data=data) #, json={'edits': deltas})
 
     if(response.status_code != 200):
         print('HTTP Error code: {}\n'.format(response.status_code))
@@ -207,7 +208,7 @@ def ApplyEdits(url, layer, token, deltas):
         if(not success):
             return False
 
-        Debug('Success.', 1, indent=4)
+        Debug('Success.\n', 1, indent=4)
         
         return True
 
