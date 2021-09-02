@@ -49,13 +49,13 @@ def LoadSyncs():
         syncs_file = open('syncs.json', 'r')
     except:
         print('No syncs.json file found!')
-        return None
+        syncs = []
 
     try:
         syncs = json.load(syncs_file)
     except:
         print('Invalid sync file!')
-        return None
+        syncs = []
 
     syncs_file.close()
     ui.Debug('Done.\n', 2, indent=4)
@@ -101,6 +101,9 @@ def CreateNewSync(cfg):
 
             ImportSDE()
 
+            #get hostname
+            hostname = raw_input('Enter SDE hostname (i.e. inpredwgis2)')
+
             #get database name
             database = raw_input('Enter SDE database name (i.e. redw):')
 
@@ -110,7 +113,7 @@ def CreateNewSync(cfg):
             print('')
 
             #check that featureclass exists in sde table registry 
-            connection = sde.Connect(cfg.SQL_hostname, database, cfg.SQL_username, cfg.SQL_password)
+            connection = sde.Connect(hostname, database, cfg.SQL_username, cfg.SQL_password)
 
             if(sde.CheckFeatureclass(connection, fcName)):
                 
@@ -123,6 +126,7 @@ def CreateNewSync(cfg):
                 service = {'servergen': {'stateId': stateId, 'globalIds': globalIds},
                            'type': 'SDE',
                            'featureclass': fcName,
+                           'hostname': hostname,
                            'database': database}
             else:
                 continue
@@ -160,17 +164,12 @@ def RemoveNulls(dict_in):
 
     return dict_in
 
-def RemoveNullsDeltas(deltas):
-    
-
-    return deltas
-
 def ExtractChanges(service, serverGen, cfg):
     #wrapper for SQL/AGOL extract changes functions
     if(service['type'] == 'SDE'):
         ImportSDE()
         
-        connection = sde.Connect(cfg.SQL_hostname, service['database'], cfg.SQL_username, cfg.SQL_password)
+        connection = sde.Connect(service['hostname'], service['database'], cfg.SQL_username, cfg.SQL_password)
         datatypes = sde.GetDatatypes(connection, service['featureclass'])
         srid = sde.GetSRID(connection, service['featurelclass'])
         
@@ -186,7 +185,7 @@ def ExtractChanges(service, serverGen, cfg):
         ready, newServerGen, srid = agol.CheckService(service['serviceUrl'], service['layerId'], token)
 
         if not ready:
-            return False
+            return None
 
         deltas = agol.ExtractChanges(service['serviceUrl'], service['layerId'], serverGen, token)
 
@@ -210,7 +209,7 @@ def ApplyEdits(service, cfg, deltas, data=None):
         #connect
 
         if data == None:
-            connection = sde.Connect(cfg.SQL_hostname, service['database'], cfg.SQL_username, cfg.SQL_password)
+            connection = sde.Connect(service['hostname'], service['database'], cfg.SQL_username, cfg.SQL_password)
             datatypes = sde.GetDatatypes(connection, service['featureclass'])
         else:
             connection = data['connection']
@@ -254,7 +253,7 @@ def ApplyEdits(service, cfg, deltas, data=None):
         return newServerGen
         
 
-def main():
+def main(): 
     #load config
     cfg = LoadConfig()
     ui.SetLogLevel(cfg)
@@ -262,54 +261,61 @@ def main():
     #load syncs
     syncs = LoadSyncs()
 
-    if(syncs == None):
-        exit()
+    while True:
 
-    #prompt user to select sync
-    syncNames = [s['name'] for s in syncs]
-    menu = syncNames[:]
-    menu.append('Create new')
-    menu.append('Delete sync')
-    choice = ui.Options('Select sync:', menu, allow_filter=True)
+        #prompt user to select sync
+        syncNames = [s['name'] for s in syncs]
+        menu = syncNames[:]
+        menu.append('Create new')
+        menu.append('Delete sync')
+        menu.append('Exit')
+        choice = ui.Options('Select sync:', menu, allow_filter=True)
 
-    if (choice == (len(menu) - 1)):
-        sync = CreateNewSync(cfg)
-        syncs.append(sync)
-        WriteSyncs(syncs)
-        print('Sync created! Exiting.')
-
-    elif (choice == len(menu)):
-        deleteIndex = ui.Options('Choose sync to delete', syncNames)
-        syncs.pop(deleteIndex - 1)
-        WriteSyncs(syncs)
-        print('Sync deleted! Exiting')
-        
-    else:
-        sync = syncs[choice - 1]
-
-        #Extract changes from both services
-        first_deltas, first_data = ExtractChanges(sync['first'], sync['first']['servergen'], cfg)
-        second_deltas, second_data = ExtractChanges(sync['second'], sync['second']['servergen'], cfg)
-        
-        #reconcile changes
-        first_deltas, second_deltas = ui.ResolveConflicts(first_deltas, second_deltas, 'PY_2', 'PY_3')
-        
-        #Apply edits
-        second_servergen = ApplyEdits(sync['second'], cfg, first_deltas, data=second_data)
-        first_servergen = ApplyEdits(sync['first'], cfg, second_deltas, data=first_data)
-
-        #check success
-        if (second_servergen and first_servergen):    
-            #Update servergens
-            syncs[choice - 1]['first']['servergen'] = first_servergen
-            syncs[choice - 1]['second']['servergen'] = second_servergen
-            
+        if (choice == (len(menu) - 2)):
+            sync = CreateNewSync(cfg)
+            syncs.append(sync)
             WriteSyncs(syncs)
+            print('Sync created!\n')
 
-            print('Success!')
+        elif (choice == (len(menu) - 1)):
+            deleteIndex = ui.Options('Choose sync to delete', syncNames)
+            syncs.pop(deleteIndex - 1)
+            WriteSyncs(syncs)
+            print('Sync deleted!\n')
+
+        elif (choice == (len(menu))):
             return
+            
+        else:
+            sync = syncs[choice - 1]
 
-        print('Failed.')
+            #Extract changes from both services
+            first_deltas, first_data = ExtractChanges(sync['first'], sync['first']['servergen'], cfg)
+            second_deltas, second_data = ExtractChanges(sync['second'], sync['second']['servergen'], cfg)
+
+            if first_deltas == None or second_deltas == None:
+                print('Failed.\n')
+                continue
+            
+            #reconcile changes
+            first_deltas, second_deltas = ui.ResolveConflicts(first_deltas, second_deltas, 'PY_2', 'PY_3')
+            
+            #Apply edits
+            second_servergen = ApplyEdits(sync['second'], cfg, first_deltas, data=second_data)
+            first_servergen = ApplyEdits(sync['first'], cfg, second_deltas, data=first_data)
+
+            #check success
+            if (second_servergen and first_servergen):    
+                #Update servergens
+                syncs[choice - 1]['first']['servergen'] = first_servergen
+                syncs[choice - 1]['second']['servergen'] = second_servergen
+                
+                WriteSyncs(syncs)
+
+                print('Success!\n')
+              
+            else:
+                print('Failed.\n')
     
     
     
