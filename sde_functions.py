@@ -2,7 +2,7 @@ import pyodbc
 import sys
 import pandas as pd
 import json
-from arcpy import FromWKB, AsShape
+from arcpy import FromWKT, AsShape
 from ui_functions import Debug
 import time
 from datetime import datetime
@@ -10,6 +10,35 @@ from datetime import datetime
 #import shapely
 #from shapely.geometry import shape
 #import geojson
+
+def RemoveNulls(dict_in):
+    #returns dictionary with only non-null entries
+    dict_in = {k: v for k, v in dict_in.items() if v is not None}
+
+    return dict_in
+
+def CleanDeltas(dict_in):
+    #remove nulls, turn all keys to lower case
+    dict_in = {k.lower(): v for k, v in dict_in.items() if v is not None}
+
+    return dict_in
+
+def AddQuotes(dict_in):
+    #adds quote marks to non-float values, turns all values into strings, escapes apostrophes
+    
+    if (not isinstance(dict_in[k], float)) and (not isinstance(dict_in[k], int)):
+        dict_in[k] = str(dict_in[k]).replace("'", "''")
+        dict_in[k] = "'{}'".format(dict_in[k])
+    else:
+        dict_in[k] = str(dict_in[k])
+        
+    return dict_in
+
+def LowercaseDataframe(df):
+    #converts all column names to lower case
+    df.columns = [col.lower() for col in df.columns]
+
+    return df
 
 def Connect(server, database, UID, PWD):
     Debug('Connecting to SQL Server...', 2)
@@ -29,9 +58,10 @@ def Connect(server, database, UID, PWD):
     return connection
 
 def ReadSQLWithDebug(query, connection):
-    Debug('SQL Query: "{}"\n'.format(query), 3)
-    return pd.read_sql(query, connection)
-          
+    Debug('SQL Query: "{}"\n'.format(query), 0)
+    df = pd.read_sql(query, connection)
+    df = LowercaseDataframe(df)
+    return df
 
 def CheckFeatureclass(connection, fcName):
     #Checks that featureclass has globalids and is registered as versioned
@@ -45,7 +75,7 @@ def CheckFeatureclass(connection, fcName):
         Debug("'{}' not found in SDE table registry. Check that it has been registered as versioned.\n".format(fcName), 1)
         return False
 
-    query = "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = '{}' AND COLUMN_NAME = ".format(fcName)
+    query = "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = '{}' AND COLUMN_NAME = 'GLOBALID'".format(fcName)
     data = ReadSQLWithDebug(query, connection)
     
     if (len(data.index) < 1):
@@ -63,10 +93,12 @@ def GetCurrentStateId(connection):
     response = ReadSQLWithDebug(query, connection)
 
     try:
-        state_id = response['state_id'][0]
+        state_id = response.iloc[0, 0]
     except:
         print('Fatal error! Could not aquire current state id.\n')
         exit()
+
+    print(state_id)
 
     Debug('SDE state id: {}\n'.format(state_id), 2, indent=4)
     return int(state_id)
@@ -87,6 +119,7 @@ def GetSRID(connection, fcName):
 
     try:
         query = "SELECT TOP 1 SHAPE.STSrid FROM {}_evw".format(fcName)
+        response = ReadSQLWithDebug(query, connection)
         srid = int(response.iloc[0])
         Debug('Done.\n', 2, indent=4)
     except:
@@ -95,23 +128,6 @@ def GetSRID(connection, fcName):
 
     return srid
 
-def RemoveNulls(dict_in):
-    #returns dictionary with only non-null entries
-    dict_in = {k: v for k, v in dict_in.items() if v is not None}
-
-    return dict_in
-
-def AddQuotes(dict_in):
-    #adds quote marks to non-float values, turns all values into strings, escapes apostrophes
-    
-    if (not isinstance(dict_in[k], float)) and (not isinstance(dict_in[k], int)):
-        dict_in[k] = str(dict_in[k]).replace("'", "''")
-        dict_in[k] = "'{}'".format(dict_in[k])
-    else:
-        dict_in[k] = str(dict_in[k])
-        
-    return dict_in
-
 def GetGlobalIds(connection, fcName):
     #returns list of global ids existing in featureclass
     Debug('Getting SDE Global IDs...', 2)
@@ -119,7 +135,9 @@ def GetGlobalIds(connection, fcName):
     query = "SELECT GLOBALID FROM {}_evw".format(fcName)
     globalIds = ReadSQLWithDebug(query, connection)
 
-    globalIdsList = globalIds['GLOBALID'].tolist()
+    globalIdsList = globalIds.iloc[:, 0].tolist()
+
+    print(globalIdsList)
 
     Debug('Done.\n', 2, indent=4)
 
@@ -130,18 +148,19 @@ def GetChanges(connection, fcName, stateId):
 
     Debug('Getting SDE changes...', 1)
 
+    currentStateId = GetCurrentStateId(connection)
+
     #get rows from adds table since lastState
-    query = "SELECT * FROM {}_evw WHERE SDE_STATE_ID > {}".format(fcName, stateId)
+    query = "SELECT * FROM {}_evw WHERE SDE_STATE_ID > {} AND SDE_STATE_ID <= {}".format(fcName, stateId, currentStateId)
     adds = ReadSQLWithDebug(query, connection)
 
-    if(len(adds.index) > 0):
-        #reaquire SHAPE column as WKB
-        query = "SELECT SHAPE.STAsBinary() FROM {}_evw WHERE SDE_STATE_ID > {}".format(fcName, stateId)
+    if(len(adds.index) > 0 and 'shape' in adds.columns):
+        #reaquire SHAPE column as WKT
+        query = "SELECT SHAPE.STAsText() FROM {}_evw WHERE SDE_STATE_ID > {} AND SDE_STATE_ID <= {}".format(fcName, stateId, currentStateId)
         shape = ReadSQLWithDebug(query, connection)
-        #print(shape['SHAPE'])
 
         #replace shape column with text
-        adds['SHAPE'] = shape.values
+        adds['shape'] = shape.values
 
     return adds
 
@@ -150,7 +169,7 @@ def WkbToEsri(WKB):
     Debug('Converting WKB to Esri Json...\n', 3)
     Debug('WKB: {}\n'.format(WKB), 3, indent=4)
     
-    geom = FromWKB(WKB)
+    geom = FromWKT(WKB)
     esri = geom.JSON
     
     Debug('Converted Esri Json: {}\n'.format(esri), 3, indent=4)
@@ -185,6 +204,12 @@ def EsriToWkb(jsn):
     
     return sql
 
+def GetDatetimeColumns(datatypes):
+    datetime_columns = (datatypes[datatypes['data_type'].str.contains('datetime')])['column_name'].tolist()
+    datetime_columns = [col.lower() for col in datetime_columns]
+
+    return datetime_columns
+
 def SqlDatetimeToEpoch(string):
     string = string.split('.')[0]
     utc_time = datetime.strptime(string, "%Y-%m-%d %H:%M:%S")
@@ -194,30 +219,40 @@ def SqlToJson(df, datatypes):
     #takes adds or updates dataframe and converts into agol-json-like dictionary
     dict_out = []
 
+    #attributes = json.loads(df.to_json(orient='index'))
+    #print(json.dumps(attributes, indent=4))
+
     #separate shape column from dataframe
-    shapes = df['SHAPE']
-    df = df.drop(labels='SHAPE', axis='columns')
+    #shapes = df['SHAPE']
+    #df = df.drop(labels='SHAPE', axis='columns')
 
     #get columns containing datetime objects
-    datetime_columns = datatypes[datatypes['DATA_TYPE'].str.contains('datetime')]['COLUMN_NAME'].tolist()
-    datetime_columns = [col.lower() for col in datetime_columns]
+    datetime_columns = GetDatetimeColumns(datatypes)
     
     for i in range(0, len(df.index)):
-        geometry = WkbToEsri(shapes.iloc[i])
-        #geometry = {"wkt": shapes[i]}
         attributes = df.iloc[i]
         attributes = json.loads(attributes.to_json(orient='index'))
-        attributes = RemoveNulls(attributes)
+
+        #remove nulls, convert keys to lower case
+        attributes = CleanDeltas(attributes)
+
+        #separate out shape
+        if ('shape' in attributes.keys()): 
+            geometry = WkbToEsri(attributes['shape'])
+            del attributes['shape']
+        else:
+            print('No shape')
 
         #convert datetime strings to epoch timestamps
         for k in attributes.keys():
-            if k.lower() in datetime_columns:
+            if k in datetime_columns:
                 epoch = SqlDatetimeToEpoch(attributes[k])
                 print str(epoch)
                 attributes[k] = epoch
 
         #print(attributes)
         entry = {'geometry': geometry, 'attributes': attributes}
+        print(json.dumps(entry))
         dict_out.append(entry)
 
     return dict_out
@@ -226,9 +261,8 @@ def JsonToSql(deltas, datatypes):
     #takes adds or updates json and turns it into sql-writable format
     dict_out = []
 
-    #get datetime columns (need to be converted to epoch
-    datetime_columns = datatypes[datatypes['DATA_TYPE'].str.contains('datetime')]['COLUMN_NAME'].tolist()
-    datetime_columns = [col.lower() for col in datetime_columns]
+    #get datetime columns (need to be converted to epoch)
+    datetime_columns = GetDatetimeColumns(datatypes)
     
     for delta in deltas:
         #turn geometry json into syntax for SQL
@@ -262,40 +296,11 @@ def JsonToSql(deltas, datatypes):
                     attributes[key] = str(attributes[key])
 
         #combine attributes and shape into one dict
-        attributes.update({'SHAPE': SHAPE})
-
+        attributes.update({'shape': SHAPE})
 
         dict_out.append(attributes)
 
     return dict_out
- 
-def SqlDeltasToJson(adds, updates, deleteGUIDs, datatypes):
-    #turns adds, updates and deletes in SQL form to JSON form
-
-    Debug('Converting SQL adds, updates, and deletes to json...\n', 2)
-    adds_json = SqlToJson(adds, datatypes)
-    updates_json = SqlToJson(updates, datatypes)
-
-    #deleteGUIDs = ['{{{0}}}'.format(delete) for delete in deleteGUIDs]
-
-    dict_out = {"adds": adds_json, "updates": updates_json, "deleteIds": deleteGUIDs}
-
-    return dict_out
-
-def JsonToSqlDeltas(json_dict, datatypes):
-    #turns JSON into adds, updates, and deletes in SQL form
-
-    Debug('Converting json to adds, updates, and deletes for SQL...\n', 2)
-        
-    adds_json = json_dict["adds"]
-    updates_json = json_dict["updates"]
-    
-    deleteGUIDs = [delete.replace('{', '').replace('}', '') for delete in json_dict["deleteIds"]]
-
-    adds = JsonToSql(adds_json, datatypes)
-    updates = JsonToSql(updates_json, datatypes)
-
-    return adds, updates, deleteGUIDs
 
 ##def WkbToSql(text):
 ##    SRID = '26910'
@@ -317,18 +322,11 @@ def EditTable(query, connection, rowCount):
 
 def Add(connection, fcName, dict_in):
     #add a feature to the versioned view of a featureclass
-    dict_in = RemoveNulls(dict_in)
-
-    #shape = dict_in['SHAPE']
-    #del dict_in['SHAPE']
-
-    #dict_in = AddQuotes(dict_in)
-
     keys = ','.join(dict_in.keys())
     values = ','.join(dict_in.values())
 
     try:
-          globalId = dict_in['GlobalID']
+          globalId = dict_in['globalid']
     except:
           print('ERROR! Update object has no global ID!\n')
           print(json.dumps(dict_in))
@@ -342,17 +340,16 @@ def Add(connection, fcName, dict_in):
 def Update(connection, fcName, dict_in):
     #update a feature in the versioned view of a featureclass
 
-    dict_in = RemoveNulls(dict_in)
-
-    #shape = dict_in['SHAPE']
-    #del dict_in['SHAPE']
-
-    globalId = dict_in['GlobalID']
-    del dict_in['GlobalID']
+    try:
+          globalId = dict_in['globalid']
+    except:
+          print('ERROR! Update object has no global ID!\n')
+          print(json.dumps(dict_in))
+          return False
+          
+    del dict_in['globalid']
 
     Debug('Updating object {}'.format(globalId), 2, indent=4)
-
-    #dict_in = AddQuotes(dict_in)
 
     pairs = []
     
@@ -361,7 +358,7 @@ def Update(connection, fcName, dict_in):
 
     data = ','.join(pairs)
 
-    query = "UPDATE {}_evw SET {} WHERE GLOBALID = {};".format(fcName, data, globalId) #TODO: make SRID variable
+    query = "UPDATE {}_evw SET {} WHERE GLOBALID = {}".format(fcName, data, globalId) #TODO: make SRID variable
 
     return EditTable(query, connection, 1)
     
@@ -379,17 +376,6 @@ def Delete(connection, fcName, GUID):
 def ExtractChanges(connection, fcName, lastGlobalIds, lastState, datatypes):
     #returns object lists for adds and updates, and list of objects deleted
     Debug('Extracting changes from {}...\n'.format(fcName), 1)
-
-    #get state ids for recent edits
-    #states = GetStatesSince(connection, lastState)
-
-##    if(len(states) < 1):
-##        #No state ids to check
-##        return {'adds': [], 'updates':[], 'deleteIds': []}
-    
-    #get adds and deletes from delta tables
-##  adds = GetAdds(connection, registration_id, states)
-##  deletes = GetDeletes(connection, registration_id, states)
     
     #get global ids and changes from versioned view
     globalIds = GetGlobalIds(connection, fcName)
@@ -402,7 +388,7 @@ def ExtractChanges(connection, fcName, lastGlobalIds, lastState, datatypes):
     deleteIds = list(set(lastGlobalIds).difference(globalIds))
 
     #get global ids from changes
-    changeGlobalIds = set(changes['GlobalID'].tolist())
+    changeGlobalIds = set(changes['globalid'].tolist())
 
     #new ids = adds
     addIds = list(changeGlobalIds.difference(lastGlobalIds))
@@ -414,40 +400,19 @@ def ExtractChanges(connection, fcName, lastGlobalIds, lastState, datatypes):
 ##    print('added', addIds)
 
     #get rows containing adds
-    addRows = changes['GlobalID'].isin(addIds)
+    addRows = changes['globalid'].isin(addIds)
 
     #split changes into adds and updates
     adds = changes[addRows]
     updates = changes[~addRows]
-    
-    #find updates, remove them from adds and deletes table, and add them to updates table
-    #in SQL, updates are stored as an add and a delete occuring at the same SDE_STATE
-    
-    #create lists to store rows containing updates in adds and deletes table
-##    updateAddRows = []
-##    updateDeleteRows = []
-##    
-##    #find update rows
-##    for i in adds.index:
-##        for j in deletes.index:
-##            #check if both object id's and SDE_STATE_ID's match
-##            if (adds["OBJECTID"][i] == deletes["SDE_DELETES_ROW_ID"][j] and adds["SDE_STATE_ID"][i] == deletes["DELETED_AT"][j]):
-##                updateAddRows.append(i)
-##                updateDeleteRows.append(j)
-##
-##    #drop state id and object id (these are specific to SDE and no longer needed)
-##    adds = adds.drop(labels=["SDE_STATE_ID", "OBJECTID"], axis='columns')
-
-    #create new dataframes
-##    updates = adds.iloc[updateAddRows]
-##    adds = adds.drop(labels=updateAddRows)
-##    deletes = deletes.drop(labels=updateDeleteRows)
-    
-    #get global ids for deletes
-    #deleteGUIDs = SdeObjectIdsToGlobalIds(connection, deletes["SDE_DELETES_ROW_ID"].tolist(), fcName, registration_id)
 
     #print("ADDS:", adds, "\nUPDATES:",updates,"\nDELETES:",deleteGUIDs)
-    deltas = SqlDeltasToJson(adds, updates, deleteIds, datatypes)
+
+    adds_json = SqlToJson(adds, datatypes)
+    updates_json = SqlToJson(updates, datatypes)
+
+
+    deltas = {"adds": adds_json, "updates": updates_json, "deleteIds": deleteIds}
 
     Debug('Done.', 1, indent=4)
     
@@ -461,7 +426,13 @@ def ApplyEdits(connection, fcName, json_dict, datatypes):
     #applies deltas to versioned view. Returns success codes and new SDE_STATE_ID
     Debug('Applying edits to {}...\n'.format(fcName), 1)
     
-    adds, updates, deleteGUIDs = JsonToSqlDeltas(json_dict, datatypes)
+    adds_json = json_dict["adds"]
+    updates_json = json_dict["updates"]
+    
+    deleteGUIDs = [delete.replace('{', '').replace('}', '') for delete in json_dict["deleteIds"]]
+
+    adds = JsonToSql(adds_json, datatypes)
+    updates = JsonToSql(updates_json, datatypes)
 
     for add in adds:
         if not Add(connection, fcName, add):
@@ -480,6 +451,9 @@ def ApplyEdits(connection, fcName, json_dict, datatypes):
     return True
 
 #connection = Connect('inpredwgis2', 'REDWTest', 'REDW_Python', 'Benefit4u!123')
+#GetCurrentStateId(connection)
+#GetGlobalIds(connection, 'AGOL_TEST_PY_2')
+#SqlToJson(GetChanges(connection, 'AGOL_TEST_PY_2', 0), GetDatatypes(connection, 'AGOL_TEST_PY_2'))
 #print(GetSRID(connection, 'AGOL_TEST_PY_2'))
 #datatypes = GetDatatypes(connection, 'AGOL_TEST_PY_2')
 #print datatypes[datatypes['DATA_TYPE'].str.contains('datetime')]['COLUMN_NAME'].tolist()

@@ -6,8 +6,6 @@
     
 import json
 import copy
-#import sde_functions as sde
-#import agol_functions as agol
 import ui_functions as ui
 
 sde = None
@@ -158,9 +156,18 @@ def CreateNewSync(cfg):
 
     return sync
 
-def RemoveNulls(dict_in):
-    #returns dictionary with only non-null entries
-    dict_in = {k: v for k, v in dict_in.items() if v is not None}
+def CleanAttributes(dict_in):
+    dict_in = {k.lower(): v for k, v in dict_in.items() if v is not None}
+
+    remove_keys = ['sde_state_id', 'object_id']
+    dict_in = {k: v for k, v in dict_in.items() if k not in remove_keys}
+
+    return dict_in
+    
+def CleanDelta(dict_in, srid):
+    #removes nulls, turns all keys to lower case
+    dict_in['attributes'] = CleanAttributes(dict_in['attributes'])
+    dict_in['geometry']['spatialReference'] = {'wkid': srid}
 
     return dict_in
 
@@ -175,8 +182,7 @@ def ExtractChanges(service, serverGen, cfg):
         
         deltas = sde.ExtractChanges(connection, service['featureclass'], serverGen['globalIds'], serverGen['stateId'], datatypes)
 
-        data = {'connection': connection, 'datatypes': datatypes}
-        
+        data = {'connection': connection, 'datatypes': datatypes} 
     
     elif(service['type'] == 'AGOL'):
         ImportAGOL()
@@ -187,26 +193,19 @@ def ExtractChanges(service, serverGen, cfg):
         if not ready:
             return None
 
-        deltas = agol.ExtractChanges(service['serviceUrl'], service['layerId'], serverGen, token)
+        deltas = agol.ExtractChanges(service['serviceUrl'], service['layerId'], serverGen, token) 
 
         data = {'token': token}
 
-    for add in deltas['adds']:
-        add['attributes'] = RemoveNulls(add['attributes'])
-        add['geometry']['spatialReference'] = {'wkid': srid}
+    print json.dumps(deltas, indent=4)
 
-        for k in add['attributes'].keys():
-            if k.lower() == 'objectid':
-                del add['attributes'][k]
+    for add in deltas['adds']:
+        add = CleanDelta(add, srid)
         
     for update in deltas['updates']:
-        update['attributes'] = RemoveNulls(update['attributes'])
-        update['geometry']['spatialReference'] = {'wkid': srid}
+        update = CleanDelta(update, srid)
 
-        for k in update['attributes'].keys():
-            if k.lower() == 'objectid':
-                del update['attributes'][k]
-
+    print json.dumps(deltas, indent=4)
 
     return deltas, data
 
@@ -275,29 +274,29 @@ def main():
         #prompt user to select sync
         syncNames = [s['name'] for s in syncs]
         menu = syncNames[:]
-        menu.append('Create new')
-        menu.append('Delete sync')
-        menu.append('Exit')
+        menu.insert(0,'Create new')
+        menu.insert(1,'Delete sync')
+        menu.insert(2,'Exit')
         choice = ui.Options('Select sync:', menu, allow_filter=True)
 
-        if (choice == (len(menu) - 2)):
+        if (choice == 1):
             sync = CreateNewSync(cfg)
             syncs.append(sync)
             WriteSyncs(syncs)
             print('Sync created!\n')
 
-        elif (choice == (len(menu) - 1)):
+        elif (choice == 2):
             deleteIndex = ui.Options('Choose sync to delete', syncNames)
             syncs.pop(deleteIndex - 1)
             WriteSyncs(syncs)
             print('Sync deleted!\n')
 
-        elif (choice == (len(menu))):
+        elif (choice == 3):
             print('HEHEHEHEHEHE')
             return
             
         else:
-            sync = syncs[choice - 1]
+            sync = syncs[choice - 4]
 
             #Extract changes from both services
             first_deltas, first_data = ExtractChanges(sync['first'], sync['first']['servergen'], cfg)
@@ -317,8 +316,8 @@ def main():
             #check success
             if (second_servergen and first_servergen):    
                 #Update servergens
-                syncs[choice - 1]['first']['servergen'] = first_servergen
-                syncs[choice - 1]['second']['servergen'] = second_servergen
+                syncs[choice - 4]['first']['servergen'] = first_servergen
+                syncs[choice - 4]['second']['servergen'] = second_servergen
                 
                 WriteSyncs(syncs)
 
@@ -329,158 +328,143 @@ def main():
     
     
     
-
-def test():
-    cfg = LoadConfig()
-    ui.SetLogLevel(cfg)
-    ui.Debug('gamer', 0)
-##    cfg = LoadConfig()
-##    syncs = LoadSyncs()
-##
-##    menu = [s['name'] for s in syncs]
-##    menu.append('Create new')
-##    choice = ui.Options('Select sync:', menu)
-##
-##    if (choice == (len(menu))):
-##        #TODO: make create new builder
-##        print(None)
-##    else:
-##        sync = syncs[choice - 1]
-##
-##    out = ExtractChanges(sync['first'], sync['first_servergen'], cfg)
-##    ApplyEdits(sync['second'], cfg, out)
-    
-    
-
-    
-    deltas = {  
-        "adds": [  
-          {  
-            "geometry": {  
-              "rings": [  
-                [  
-                  [  
-                    1599093.38156825,
-                    4299494.38162189
-                  ],
-                  [  
-                    1621892.61012839,
-                    4282639.631925
-                  ],
-                  [  
-                    1616369.15773174,
-                    4273287.47109171
-                  ],
-                  [  
-                    1596005.6876463,
-                    4284510.52152801
-                  ],
-                  [  
-                    1599093.38156825,
-                    4299494.38162189
-                  ]
-                ]
-              ]
-            },
-            "attributes": {  
-              "FID": 250,
-              "GlobalID": "C8FCEBF0-51D1-4FFA-A5ED-FFD47F10014F",
-              "ObjectID": 125,
-              "FIPS_CNTRY": "MT",
-              "GMI_CNTRY": "MLT",
-              "ISO_2DIGIT": "MT",
-              "ISO_3DIGIT": "MLT",
-              "ISO_NUM": 470,
-              "CNTRY_NAME": "Malta",
-              "LONG_NAME": "Republic of Malta",
-              "ISOSHRTNAM": "Malta",
-              "UNSHRTNAM": "Malta",
-              "LOCSHRTNAM": "Malta",
-              "LOCLNGNAM": "Repubblika ta' Malta",
-              "STATUS": "UN Member State",
-              "POP2007": 401880,
-              "SQKM": 211.5,
-              "SQMI": 81.66,
-              "LAND_SQKM": 316,
-              "COLORMAP": 2
+first_deltas = {
+    "deleteIds": [], 
+    "adds": [], 
+    "updates": [
+        {
+            "geometry": {
+                "rings": [
+                    [
+                        [
+                            400776.672250849, 
+                            4640112.25815286
+                        ], 
+                        [
+                            400759.700596652, 
+                            4640104.36435203
+                        ], 
+                        [
+                            400729.907206961, 
+                            4640073.74643086
+                        ], 
+                        [
+                            400711.748572683, 
+                            4640108.42937512
+                        ], 
+                        [
+                            400615.261475172, 
+                            4640126.84045026
+                        ], 
+                        [
+                            400681.167664727, 
+                            4640174.64573512
+                        ], 
+                        [
+                            400714.206264933, 
+                            4640185.52063968
+                        ], 
+                        [
+                            400747.460103052, 
+                            4640182.51656634
+                        ], 
+                        [
+                            400755.753649996, 
+                            4640146.59620403
+                        ], 
+                        [
+                            400761.674042239, 
+                            4640144.62274921
+                        ], 
+                        [
+                            400782.022575571, 
+                            4640195.51494364
+                        ], 
+                        [
+                            400768.778450053, 
+                            4640135.15019929
+                        ], 
+                        [
+                            400800.254065003, 
+                            4640171.50286492
+                        ], 
+                        [
+                            400773.909449216, 
+                            4640126.86170195
+                        ], 
+                        [
+                            400776.672250849, 
+                            4640112.25815286
+                        ]
+                    ]
+                ], 
+                "spatialReference": {
+                    "wkid": 26910
+                }
+            }, 
+            "attributes": {
+                "tmp_disturbmax": "L", 
+                "visit_type": "Inventory", 
+                "utm_zone": "10", 
+                "editdate": 1631472564095, 
+                "taxonomy": "Obla dee", 
+                "polyhistory": "2008-P-0008;", 
+                "visit_year": 2008, 
+                "location_general": "Tolowa Dunes State Park", 
+                "native_coverclass_range": "999", 
+                "xfield": 400756, 
+                "tmp_disturbpotential": "N2", 
+                "mappedacres": 0.29111232, 
+                "management_actions": "No Treatment", 
+                "species_id": "HYPCAL", 
+                "yfield": 4640125, 
+                "location_name": "Yontocket", 
+                "ruleid": 1, 
+                "projectname": "Tolowa St. John's Worts", 
+                "potentialdisturbance": "HYPCAL-N2", 
+                "edituser": "REDW_Python", 
+                "percenttreated": 0, 
+                "utm_datum": "NAD83", 
+                "yearspeciestreat": "2008HYPCALInventory", 
+                "tmp_disturbmin": "N", 
+                "gpsreceiver": "Trimble GeoXT", 
+                "coverclass_range": "999", 
+                "coverclass": 8, 
+                "globalid": "0600494B-D048-4F1C-8063-0B1A5EDD7C0F", 
+                "source_mapping": "GPS, Trimble GeoXT", 
+                "createdate": 1630364185790, 
+                "densityadjustedacres": 0, 
+                "cover_density": "Low", 
+                "zz_feature_id": 484, 
+                "treatment_specific": "Inventory", 
+                "zz_replace_geom": "No", 
+                "visitdatelast": "20080530", 
+                "quad": "Smith River", 
+                "location_broad": "A-North", 
+                "county": "Del Norte", 
+                "native_coverclass": 111, 
+                "collectdate": 0, 
+                "previous_treat": "2001", 
+                "recorder_name": "Laura Julian", 
+                "disturbcategory": "HYPCAL-L", 
+                "date_fyall": "20080530", 
+                "tmp_disturbcurrent": "L", 
+                "location_specific": "TDSP - North", 
+                "visit_date": "20080530", 
+                "date_mapped": "20080530", 
+                "treatcategory": "Inventory", 
+                "starttime": "1200", 
+                "createuser": "REDW_Python", 
+                "distribution": "Continuous", 
+                "tmp_charlocation": 7, 
+                "phenology": "vegetative", 
+                "datemonitor": "20080530"
             }
-          }
-        ],
-        "updates": [  
-          {  
-            "geometry": {  
-              "rings": [  
-                [  
-                  [  
-                    1599093.38156825,
-                    4299494.38162189
-                  ],
-                  [  
-                    1621892.61012839,
-                    4282639.631925
-                  ],
-                  [  
-                    1616369.15773174,
-                    4273287.47109171
-                  ],
-                  [  
-                    1596005.6876463,
-                    4284510.52152801
-                  ],
-                  [  
-                    1599093.38156825,
-                    4299494.38162189
-                  ]
-                ]
-              ]
-            },
-            "attributes": {  
-              "FID": 1,
-              "GlobalID": "CECC5D06-CFD4-40E7-943B-3793770411E1",
-              "ObjectID": 125,
-              "FIPS_CNTRY": "MT",
-              "GMI_CNTRY": "MLT",
-              "ISO_2DIGIT": "MT",
-              "ISO_3DIGIT": "MLT",
-              "ISO_NUM": 470,
-              "CNTRY_NAME": "Malta",
-              "LONG_NAME": "Republic of Malta",
-              "ISOSHRTNAM": "Malta",
-              "UNSHRTNAM": "Malta",
-              "LOCSHRTNAM": "Malta",
-              "LOCLNGNAM": "Repubblika ta' Malta",
-              "STATUS":" UN Member State",
-              "POP2007": 401880,
-              "SQKM": 211.5,
-              "SQMI": 81.66,
-              "LAND_SQKM": 316,
-              "COLORMAP": 2
-            }
-          }
-        ],
-        "deleteIds": [  
-          "0D8E1D93-29AE-4D16-AF61-E74FED983732"
-        ]
-      }
+        }
+    ]
+}
 
 
-
-    deltas2 = copy.deepcopy(deltas)
-    deltas2['deleteIds'].append("CECC5D06-CFD4-40E7-943B-3793770411E1")
-
-
-    #config = LoadConfig()
-    #print(config.name)
-    #deltas, deltas2 = ResolveConflicts(deltas, deltas2)
-    #ui.ResolveConflicts(deltas, deltas2, 'ONE', 'TWO')
-
-    #print(LoadSyncs())
-
-    #connection = sql.Connect('inpredwgis2', 'REDWTest', 'REDW_Python', 'Benefit4u!123')
-    #sql.GetSyncs(connection, 'AGOL_TEST_PY_2')
-    
-    
-    #connection.close()
 
 if __name__ == '__main__':
     main()

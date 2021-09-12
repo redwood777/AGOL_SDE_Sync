@@ -1,8 +1,25 @@
 import json
 
+logLevel = 1
+
+def SetLogLevel(cfg):
+    global logLevel
+    
+    try:
+        logLevel  = cfg.log_level
+    except:
+        logLevel = 1
+    
+
+def Debug(message, messageLevel, indent=0):
+    global logLevel
+    
+    if(messageLevel <= logLevel):
+        print('{}{}'.format((indent*' '), message))
+
 def GetGlobalIds(dict_in):
     #pulls global ids from adds or updates dictionary, returns as set
-    return {add['attributes']['GlobalID'] for add in dict_in}
+    return {add['attributes']['globalid'] for add in dict_in}
 
 def Options(prompt, menu, allow_filter=False, filter_string = ''):
     print(prompt)
@@ -160,14 +177,14 @@ def ResolveConflicts(FIRST_deltas, SECOND_deltas, first_name, second_name):
 
         #run through old updates and add them to new updates or adds
         for update in SECOND_deltas['updates']:
-            GUID = update['attributes']['GlobalID']
+            GUID = update['attributes']['globalid']
             if GUID in SECOND_updated:
                 revisedSECONDUpdates.append(update)
             if GUID in SECOND_new_adds:
                 SECOND_deltas['adds'].append(update)
 
         for update in FIRST_deltas['updates']:
-            GUID = update['attributes']['GlobalID']
+            GUID = update['attributes']['globalid']
             if GUID in FIRST_updated:
                 revisedFIRSTUpdates.append(update)
             if GUID in FIRST_new_adds:
@@ -198,19 +215,6 @@ def ResolveConflicts(FIRST_deltas, SECOND_deltas, first_name, second_name):
        
     return FIRST_deltas, SECOND_deltas
 
-logLevel = 1
 
-def SetLogLevel(cfg):
-    global logLevel
-    
-    try:
-        logLevel  = cfg.log_level
-    except:
-        logLevel = 1
-    
 
-def Debug(message, messageLevel, indent=0):
-    global logLevel
-    
-    if(messageLevel <= logLevel):
-        print('{}{}'.format((indent*' '), message))
+
