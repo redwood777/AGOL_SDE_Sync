@@ -1,4 +1,11 @@
 ##WELCOME TO THE LEJANZ AGOL/SDE SYNC TOOL
+
+## Version:                       1.3
+## Milestone:                     Remove case sensitivity
+## Release Date:                  09/12/2021
+## Notable corrections needeed: 
+## Delete statement for SDE feature needs quotes on GUID; 
+
 ##Terminology:
 ##    service: the featureclass or feature service
 ##    sync: a pair of services registered with this tool
